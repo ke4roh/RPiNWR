@@ -27,9 +27,6 @@ class TestSi4707(unittest.TestCase):
         i2c = MockI2C()
         events = []
 
-        def print_event(event):
-            logging.info(str(event))
-
         with Si4707(i2c) as radio:
             radio.register_event_listener(print_event)
             radio.register_event_listener(events.append)
@@ -41,9 +38,6 @@ class TestSi4707(unittest.TestCase):
         logging.basicConfig(level=logging.INFO)
         i2c = MockI2C()
         events = []
-
-        def print_event(event):
-            print(str(event))
 
         with Si4707(i2c) as radio:
             radio.register_event_listener(print_event)
@@ -70,9 +64,6 @@ class TestSi4707(unittest.TestCase):
     def test_set_property(self):
         i2c = MockI2C()
         events = []
-
-        def print_event(event):
-            print(str(event))
 
         with Si4707(i2c) as radio:
             radio.register_event_listener(print_event)
@@ -125,6 +116,51 @@ class TestSi4707(unittest.TestCase):
             radio.register_event_listener(print_event)
             self.assertEqual(63, radio.do_command(GetProperty("RX_VOLUME")).get())
 
+    def test_rsq_interrupts(self):
+        i2c = MockI2C()
+        events = []
+
+        with Si4707(i2c) as radio:
+            radio.power_on({"frequency": 162.4})
+            radio.register_event_listener(events.append)
+            radio.register_event_listener(print_event)
+            i2c.interrupts |= 8  # RSQ
+            time.sleep(.05)
+        rsqe = list(filter(lambda x: type(x) is ReceivedSignalQualityCheck, events))
+        self.assertEqual(1, len(rsqe))
+        self.assertEqual(15, rsqe[0].frequency_offset)
+
+    def test_alert_tone_detection(self):  # WB_ASQ_STATUS
+        i2c = MockI2C()
+        events = []
+        tone_duration = 0.5
+        tone_duration_tolerance = 0.1
+
+        with Si4707(i2c) as radio:
+            radio.power_on({"frequency": 162.4})
+            radio.register_event_listener(events.append)
+            radio.register_event_listener(print_event)
+            i2c.alert_tone(True)
+            time.sleep(tone_duration)
+            i2c.alert_tone(False)
+            time.sleep(0.05)
+
+        asqe = list(filter(lambda x: type(x) is AlertToneCheck, events))
+        self.assertEqual(2, len(asqe))
+        self.assertTrue(asqe[0].tone_on)
+        self.assertTrue(asqe[0].tone_start)
+        self.assertFalse(asqe[0].tone_end)
+        self.assertFalse(asqe[1].tone_on)
+        self.assertFalse(asqe[1].tone_start)
+        self.assertTrue(asqe[1].tone_end)
+
+        # Finally, make sure the timing of the tones is measured fairly accurately
+        self.assertTrue(abs((asqe[1].time_complete - asqe[0].time_complete) - tone_duration) < tone_duration_tolerance,
+                        "Tone duration measured as %f sec - spec called for %f±%f" % (
+                            asqe[1].time_complete - asqe[0].time_complete, tone_duration, tone_duration_tolerance))
+        self.assertIsNone(asqe[0].duration)
+        self.assertTrue(abs(asqe[1].time_complete - asqe[0].time_complete - asqe[1].duration) < 0.01)
+
 
 class MockI2C(object):
     # TODO split out the I2C mock from the Si4707 mock
@@ -146,6 +182,11 @@ class MockI2C(object):
         self.OPMODE = 0  # 5 = Analog audio,
         self.props = dict([(x[0], x[3]) for x in PROPERTIES])
         self.power = False
+        self.interrupts = 0
+        self.asq_stopped = False
+        self.asq_started = False
+        self.asq_tone = False
+        self.asq_lock = threading.Lock()
 
     def reverseByteOrder(self, data):
         "Reverses the byte order of an int (16-bit) or long (32-bit) value"
@@ -222,7 +263,7 @@ class MockI2C(object):
             propval = struct.pack(">H", self.props[prop])
             self.registers[0] = [128, 0, propval[0], propval[1], 0, 0, 0]
         elif reg == 0x14:  # GET_INT_STATUS (interrupt)
-            pass
+            self.registers[0][0] |= self.interrupts
         elif reg == 0x15 or reg == 0x16:  # patch data
             pass
         elif reg == 0x50:  # WB_TUNE_FREQ - tune the radio
@@ -234,9 +275,35 @@ class MockI2C(object):
             threading.Timer(0.5, set_stc).start()
         elif reg == 0x52:  # WB_TUNE_STATUS
             self.registers[0] = [128, 0, self.registers[0x50][0], self.registers[0x50][1], 32, 27]
+        elif reg == 0x53:  # WB_RSQ_STATUS
+            if self.bus[reg][0]:
+                self.interrupts ^= 8
+            self.registers[0] = [128 | self.interrupts, 5, 1, 0, 3, 0, 0, 15]
+        elif reg == 0x55:  # WB_ASQ_STATUS - alert tone detection
+            with self.asq_lock:
+                if self.bus[reg][0]:
+                    self.interrupts ^= 2
+
+                self.registers[0] = [128 | self.interrupts, self.asq_started | self.asq_stopped << 1, self.asq_tone]
+
+                if self.bus[reg][0]:
+                    self.asq_stopped = 0
+                    self.asq_started = 0
         else:
             logging.error("Command not mocked 0x%02X" % reg)
             self.registers[0][0] = 192
+
+    def alert_tone(self, playing=False):
+        with self.asq_lock:
+            if self.asq_tone != playing:
+                self.asq_stopped |= not playing
+                self.asq_started |= playing
+                self.asq_tone = playing
+                self.interrupts |= 2
+
+
+def print_event(event):
+    print(str(event))
 
 
 if __name__ == '__main__':

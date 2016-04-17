@@ -68,7 +68,7 @@ class Status(Symbol):
     def is_error(self):
         return self.value & 1 << 6
 
-    def is_rqs_interrupt(self):
+    def is_received_signal_quality_interrupt(self):
         return self.value & 1 << 3
 
     def is_same_interrupt(self):
@@ -160,20 +160,13 @@ class Command(Symbol):
         return _simple_members(self)
 
 
-class UninterruptableCommand(Command):
-    """Commands extending this abstract type will not be preempted for interrupts."""
-
-    def get_priority(self):
-        return 0
-
-
 def _bit(value, offset):
     """Prepare a binary value as a bit with the given offset)"""
     # this is just syntactic sugar
     return (value and True) << offset
 
 
-class PowerUp(UninterruptableCommand):
+class PowerUp(Command):
     """Initiates the boot process to move the device from powerdown to powerup mode.
     :param function: either 3 (WB receive) or 15 (query library ID)
     :param patch: False.  See PatchCommand for how to patch.
@@ -227,9 +220,13 @@ class PowerUp(UninterruptableCommand):
             self.opmode])
         return radio.wait_for_clear_to_send()
 
+    def get_priority(self):
+        return 0
+
 
 class PatchCommand(PowerUp):
-    def __init__(self, patch, patch_id=None, cts_interrupt_enable=True, gpo2_output_enable=True, crystal_oscillator_enable=True, opmode=0x05):
+    def __init__(self, patch, patch_id=None, cts_interrupt_enable=True, gpo2_output_enable=True,
+                 crystal_oscillator_enable=True, opmode=0x05):
         """
         This command will patch the firmware while powering up the radio.
 
@@ -301,6 +298,9 @@ class PowerDown(CommandRequiringPowerUp):
         super(PowerDown, self).do_command0(radio)
         radio.radio_power = False
         radio._fire_event(RadioPowerEvent(False))
+
+    def get_priority(self):
+        return 0
 
 # TODO replace the default value with a map of bits where appropriate, including the mnemonic and offset
 # and populate the value based on that in the Property object
@@ -400,6 +400,7 @@ class TuneFrequency(CommandRequiringPowerUp):
             time.sleep(radio.tune_after - time.time())
 
         radio.hardware_io.writeList(self.value, list(struct.pack(">bH", 0, self.frequency)))
+        radio.tone_start = None
         while not radio.check_interrupts().is_seek_tune_complete():  # wait for STC
             time.sleep(0.02)
         ts = TuneStatus(True)
@@ -414,17 +415,74 @@ class TuneFrequency(CommandRequiringPowerUp):
 class TuneStatus(CommandRequiringPowerUp):
     def __init__(self, ack_stc=False):
         super(TuneStatus, self).__init__(mnemonic="WB_TUNE_STATUS", value=0x52)
+        self.ack_stc = ack_stc
         self.frequency = None
         self.rssi = None
         self.snr = None
 
     def do_command0(self, radio):
-        radio.hardware_io.writeList(self.value, [0x01])  # Acknowledge STC, get tune status
+        radio.hardware_io.writeList(self.value, [self.ack_stc & 1])  # Acknowledge STC, get tune status
         radio.wait_for_clear_to_send()
         bl = radio.hardware_io.readList(0, 6)
-        logging.debug(str(bl))
         self.frequency, self.rssi, self.snr = struct.unpack(">xxHbb", bytes(bl))
         return self.frequency / 400.0, self.rssi, self.snr
+
+
+class InterruptHandler(CommandRequiringPowerUp):
+    def get_priority(self):
+        return 1
+
+
+class ReceivedSignalQualityCheck(InterruptHandler):
+    def __init__(self, ack_rsq=False):
+        super(ReceivedSignalQualityCheck, self).__init__(mnemonic="WB_RSQ_STATUS", value=0x53)
+        self.ack_rsq = ack_rsq
+        self.rssi = None
+        self.asnr = None
+        self.frequency_offset = None
+        self.afc_rail = None
+        self.valid_channel = None
+        self.snr_high = None
+        self.snr_low = None
+        self.rssi_high = None
+        self.rssi_low = None
+
+    def do_command0(self, radio):
+        radio.hardware_io.writeList(self.value, [self.ack_rsq & 1])
+        radio.wait_for_clear_to_send()
+        violation_flags, validity, self.rssi, self.asnr, self.frequency_offset = \
+            struct.unpack(">xbbxbbxb", bytes(radio.hardware_io.readList(0, 8)))
+        self.afc_rail = validity & 2 != 0
+        self.valid_channel = validity & 1 != 0
+        self.snr_high = violation_flags & 8 != 0
+        self.snr_low = violation_flags & 4 != 0
+        self.rssi_high = violation_flags & 2 != 0
+        self.rssi_low = violation_flags & 1 != 0
+
+
+class AlertToneCheck(InterruptHandler):
+    def __init__(self, int_ack=False):
+        super(AlertToneCheck, self).__init__(mnemonic="WB_ASQ_STATUS", value=0x55)
+        self.int_ack = int_ack
+        self.tone_start = None
+        self.tone_end = None
+        self.tone_on = None
+        self.duration = None
+
+    def do_command0(self, radio):
+        radio.hardware_io.writeList(self.value, [self.int_ack & 1])
+        radio.wait_for_clear_to_send()
+        history, present = \
+            struct.unpack(">xbb", bytes(radio.hardware_io.readList(0, 4)))
+        self.tone_start = history & 1 != 0
+        self.tone_end = history & 2 != 0
+        self.tone_on = present != 0
+        if self.tone_on:
+            radio.tone_start = time.time()
+        else:
+            if radio.tone_start is not None:
+                self.duration = time.time() - radio.tone_start
+                radio.tone_start = None
 
 
 ###############################################################################
@@ -520,6 +578,7 @@ class Si4707(object):
         self.status = None  # Gonna fix this in __enter__
         self.stop = False  # True to stop threads
         self.__shutdown = False  # True once shutdown has commenced
+        self.tone_start = None
 
     def __enter__(self):
         for t in [threading.Thread(target=self.__command_loop),
@@ -539,9 +598,14 @@ class Si4707(object):
             command = None
             try:
                 # TODO look for an interrupt here
-                # self.is_interrupted(...)
-                # radio.wait_for_clear_to_send()
-                # self._check_interrupt(radio)
+                status = self.check_interrupts()
+                if status.is_same_interrupt():
+                    pass
+                if status.is_audio_signal_quality_interrupt():
+                    self.do_command(AlertToneCheck(True))
+                if status.is_received_signal_quality_interrupt():
+                    self.do_command(ReceivedSignalQualityCheck(True))
+
                 command = self.__command_queue.get_nowait()[1]
                 logging.debug("Executing " + str(command))
                 command.do_command(self)
