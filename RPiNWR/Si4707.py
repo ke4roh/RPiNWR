@@ -499,13 +499,14 @@ class SameInterruptCheck(InterruptHandler):
         if self.dispatch_message:
             radio.same_timeout = float("inf")
             if len(radio.same_messages) > 0:
-                avg_message = SAME.average_message(radio.same_messages)
+                messages = radio.same_messages
+                avg_message = SAME.average_message(messages)
                 radio.same_messages = []
                 try:
-                    radio._fire_event(SAME.SAMEMessage(*avg_message))
+                    radio._fire_event(SAMEMessageReceivedEvent(SAME.SAMEMessage(*avg_message)))
                 except ValueError as e:
                     # TODO throw a DirtySAMEMessage event
-                    radio._fire_event(e)
+                    radio._fire_event(InvalidSAMEMessageReceivedEvent(messages))
 
         self.status = status = self.__get_status(radio, intack=self.intack, clearbuf=self.clearbuf)
         if self.intack:
@@ -525,6 +526,7 @@ class SameInterruptCheck(InterruptHandler):
                 conf = conf[0:msg_len + 1]
                 radio.same_messages.append(("".join([chr(c) for c in msg]), conf))
                 self.__get_status(radio, clearbuf=True)
+                radio._fire_event(SAMEHeaderReceived(radio.same_messages))
                 radio.same_timeout = time.time() + 6
 
     def __str__(self):
@@ -610,6 +612,28 @@ class CommandExceptionEvent(Si4707Event):
         super(CommandExceptionEvent, self).__init__()
         self.exception = exception
         self.passed_back = passed_back
+
+
+class SAMEEvent(Si4707Event):
+    pass
+
+
+class SAMEMessageReceivedEvent(SAMEEvent):
+    def __init__(self, same_message):
+        super(SAMEMessageReceivedEvent, self).__init__()
+        self.message = same_message
+
+
+class InvalidSAMEMessageReceivedEvent(SAMEEvent):
+    def __init__(self, headers):
+        super(InvalidSAMEMessageReceivedEvent, self).__init__()
+        self.headers = headers
+
+
+class SAMEHeaderReceived(SAMEEvent):
+    def __init__(self, headers):
+        super(SAMEHeaderReceived, self).__init__()
+        self.headers = headers
 
 
 class EventProcessingExceptionEvent(Si4707Event):
