@@ -42,6 +42,7 @@ class RPiNWRadio(object):
     relay_gpio_pins = [13, 19]
 
     def __init__(self, gpio=None, i2c=None):
+        self._logger = logging.getLogger(type(self).__name__)
         if gpio is None:
             import RPi.GPIO
 
@@ -172,4 +173,3 @@ if __name__ == '__main__':
 
     except KeyboardInterrupt:
         pass
-

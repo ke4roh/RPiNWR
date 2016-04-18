@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from RPiNWR import SAME
+
 __author__ = 'ke4roh'
 # A Python translation of the Si4707 instructions
 #
@@ -128,6 +130,7 @@ class Command(Symbol):
         self.exception = None
         self.result = None
         self.time_complete = None
+        self._logger = logging.getLogger(type(self).__name__)
 
     def do_command(self, radio):
         try:
@@ -135,7 +138,7 @@ class Command(Symbol):
             if self.future:
                 self.future.result(self.result)
         except Exception as e:
-            logging.exception(type(self).__name__ + " failed")
+            self._logger.exception("failed")
             self.exception = e
             if self.future:
                 self.future.exception(e)
@@ -271,7 +274,7 @@ class CommandRequiringPowerUp(Command):
 
     def do_command(self, radio):
         if not radio.radio_power:
-            raise ValueError("Power up before " + type(self).__name__)
+            raise ValueError("Attempted %s when powered down" % type(self).__name__)
         return super(CommandRequiringPowerUp, self).do_command(radio)
 
 
@@ -289,9 +292,6 @@ class PowerDown(CommandRequiringPowerUp):
     """Switch off the receiver."""
 
     def __init__(self):
-        """
-        :param stop - if radio commands are to stop processing after this one, false otherwise
-        """
         super(PowerDown, self).__init__("POWER_DOWN", 0x11)
 
     def do_command0(self, radio):
@@ -396,8 +396,9 @@ class TuneFrequency(CommandRequiringPowerUp):
         self.snr = None
 
     def do_command0(self, radio):
-        if time.time() < radio.tune_after:
-            time.sleep(radio.tune_after - time.time())
+        while time.time() < radio.tune_after:
+            # check back occasionally to see if the tune_after might have changed favorably
+            time.sleep(max(.1, radio.tune_after - time.time()))
 
         radio.hardware_io.writeList(self.value, list(struct.pack(">bH", 0, self.frequency)))
         radio.tone_start = None
@@ -477,12 +478,94 @@ class AlertToneCheck(InterruptHandler):
         self.tone_start = history & 1 != 0
         self.tone_end = history & 2 != 0
         self.tone_on = present != 0
+        radio.do_command(SameInterruptCheck(dispatch_message=True))
         if self.tone_on:
             radio.tone_start = time.time()
         else:
             if radio.tone_start is not None:
                 self.duration = time.time() - radio.tone_start
                 radio.tone_start = None
+
+
+class SameInterruptCheck(InterruptHandler):
+    def __init__(self, intack=False, clearbuf=False, dispatch_message=False):
+        super(SameInterruptCheck, self).__init__(mnemonic="WB_SAME_STATUS", value=0x54)
+        self.status = None
+        self.intack = intack
+        self.clearbuf = clearbuf or dispatch_message
+        self.dispatch_message = dispatch_message
+
+    def do_command0(self, radio):
+        if self.dispatch_message:
+            radio.same_timeout = float("inf")
+            if len(radio.same_messages) > 0:
+                avg_message = SAME.average_message(radio.same_messages)
+                radio.same_messages = []
+                try:
+                    radio._fire_event(SAME.SAMEMessage(*avg_message))
+                except ValueError as e:
+                    # TODO throw a DirtySAMEMessage event
+                    radio._fire_event(e)
+
+        self.status = status = self.__get_status(radio, intack=self.intack, clearbuf=self.clearbuf)
+        if self.intack:
+            if status["EOMDET"]:
+                radio.same_timeout = 0  # If there's a message to be had, it'll get processed shortly
+            elif status["PREDET"]:
+                radio.same_timeout = time.time() + 6
+            elif status["HDRRDY"]:
+                msg = list(self.status["MESSAGE"])
+                conf = list(self.status["CONFIDENCE"])
+                msg_len = self.status["MSGLEN"]
+                while len(msg) < msg_len:
+                    st = self.__get_status(radio, readaddr=len(msg))
+                    msg.extend(st["MESSAGE"])
+                    conf.extend(st["CONFIDENCE"])
+                msg = msg[0:msg_len + 1]
+                conf = conf[0:msg_len + 1]
+                radio.same_messages.append(("".join([chr(c) for c in msg]), conf))
+                self.__get_status(radio, clearbuf=True)
+                radio.same_timeout = time.time() + 6
+
+    def __str__(self):
+        msg = type(self).__name__ + " ["
+        if self.status:
+            if self.status["EOMDET"]:
+                msg += "EOMDET "
+            if self.status["SOMDET"]:
+                msg += "SOMDET "
+            if self.status["PREDET"]:
+                msg += "PREDET "
+            if self.status["HDRRDY"]:
+                msg += "HDRRDY "
+
+        if self.dispatch_message:
+            msg += "dispatch_message "
+        if self.clearbuf:
+            msg += "clearbuf "
+        if self.intack:
+            msg += "intack "
+        msg += "]"
+        return msg
+
+    def __get_status(self, radio, readaddr=0, clearbuf=False, intack=False):
+        radio.hardware_io.writeList(self.value, [clearbuf < 1 | intack, readaddr])
+        radio.wait_for_clear_to_send()
+        data = radio.hardware_io.readList(0, 14)
+        confidence = [0] * 8
+        for i in range(0, 8):
+            confidence[i] = data[int((7 - i) / 4) + 4] >> (i % 4 * 2) & 0x3
+
+        return {
+            "EOMDET": (data[1] & 8) != 0,
+            "SOMDET": (data[1] & 4) != 0,
+            "PREDET": (data[1] & 2) != 0,
+            "HDRRDY": (data[1] & 1) != 0,
+            "STATE": data[2],
+            "MSGLEN": data[3],
+            "CONFIDENCE": confidence,
+            "MESSAGE": data[6:14]
+        }
 
 
 ###############################################################################
@@ -579,6 +662,9 @@ class Si4707(object):
         self.stop = False  # True to stop threads
         self.__shutdown = False  # True once shutdown has commenced
         self.tone_start = None
+        self._logger = logging.getLogger(type(self).__name__)
+        self.same_messages = []
+        self.same_timeout = float("inf")
 
     def __enter__(self):
         for t in [threading.Thread(target=self.__command_loop),
@@ -587,9 +673,9 @@ class Si4707(object):
             t.start()
         try:
             self.wait_for_clear_to_send(timeout=5)
-            logging.info("Si4707 ready")
+            self._logger.info("Si4707 ready")
         except Exception:
-            logging.exception("Startup failed")
+            self._logger.exception("Startup failed")
             raise
         return self
 
@@ -597,31 +683,44 @@ class Si4707(object):
         while not self.stop:
             command = None
             try:
-                # TODO look for an interrupt here
+                # Check for interrupts
                 status = self.check_interrupts()
                 if status.is_same_interrupt():
-                    pass
+                    self.do_command(SameInterruptCheck(intack=True))
                 if status.is_audio_signal_quality_interrupt():
                     self.do_command(AlertToneCheck(True))
                 if status.is_received_signal_quality_interrupt():
                     self.do_command(ReceivedSignalQualityCheck(True))
 
+                # Check for a SAME message to dispatch
+                if len(self.same_messages) >= 3 or (
+                                len(self.same_messages) > 0 and self.same_timeout <= time.time()):
+                    self._logger.debug("len(messages)=%d , time-timeout=%f" % (
+                        len(self.same_messages), time.time() - self.same_timeout))
+                    self.do_command(SameInterruptCheck(dispatch_message=True))
+
+                # Run any pending command
                 command = self.__command_queue.get_nowait()[1]
-                logging.debug("Executing " + str(command))
                 command.do_command(self)
+                self._logger.debug("Executed " + str(command))
                 if command.exception:
+                    # Logged where it's caught in command
                     self._fire_event(CommandExceptionEvent(command.exception, passed_back=True))
                 else:
                     self._fire_event(command)
             except queue.Empty:
-                # Take this opportunity to reset the command serial number
-                if self.__command_serial_number > 5000:
-                    with self.__command_serial_number_lock:
-                        if self.__command_queue.empty():
-                            self.__command_serial_number = 0
-                time.sleep(0.05)
+                try:
+                    # Reset the command serial number if it gets big
+                    if self.__command_serial_number > 50000:
+                        with self.__command_serial_number_lock:
+                            if self.__command_queue.empty():
+                                self.__command_serial_number = 0
+
+                    time.sleep(0.05)
+                except Exception:
+                    self._logger.exception("housekeeping failed")
             except Exception as e:
-                logging.exception("Surprise in command queue processing")
+                self._logger.exception("queue processing failed")
                 self._fire_event(CommandExceptionEvent(e, passed_back=False))
             finally:
                 if command is not None:
@@ -656,7 +755,7 @@ class Si4707(object):
                     events.append(heapq.heappop(self.__delayed_events))
             for ev in events:
                 ev[1].time = time.time()
-                logging.debug("Firing for t=%f (%d ms late)" % (ev[0], int((time.time() - ev[0]) * 1000)))
+                self._logger.debug("Firing for t=%f (%d ms late)" % (ev[0], int((time.time() - ev[0]) * 1000)))
             return list([x[1] for x in events])
 
         # Here begins the body of __event_loop
@@ -669,6 +768,7 @@ class Si4707(object):
             except queue.Empty:
                 pass
             except Exception as e:
+                self._logger.exception("Event processing")
                 self._fire_event(EventProcessingExceptionEvent(e))
         self.__event_queue = None
 
@@ -680,7 +780,7 @@ class Si4707(object):
         """
         with self.__delayed_event_lock:
             heapq.heappush(self.__delayed_events, (when, event))
-        logging.debug("Scheduled " + str(event) + " for " + str(when) + " which is " + str(
+        self._logger.debug("Scheduled " + str(event) + " for " + str(when) + " which is " + str(
             int((when - time.time()) * 1000)) + " ms in the future.")
 
     def wait_for_clear_to_send(self, timeout=1.0):
@@ -754,7 +854,7 @@ class Si4707(object):
         :param hard - if True, preempt any commands that might already be in the command queue, and fail them.
           Otherwise, put the PowerDown at the end of the command queue and let it execute
         """
-        logging.debug("Shutting down Si4707")
+        self._logger.debug("Shutting down Si4707")
         if not self.__shutdown:
             self.__shutdown = True
             if self.radio_power:
@@ -771,7 +871,7 @@ class Si4707(object):
 
             while self.__event_queue is not None or self.__command_queue is not None:
                 time.sleep(.002)
-            logging.debug("Si4707 stopped")
+            self._logger.debug("Si4707 stopped")
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         try:
@@ -868,7 +968,7 @@ class Si4707(object):
         for f in frequencies:
             rsf = self.tune(f)
             rates.append((rsf[1], rsf[0], rsf[2]))
-        logging.info("Scanned " + str(rates))
+        self._logger.info("Scanned " + str(rates))
         best = max(rates)
         self.tune(best[2])
         self.mute(mute)

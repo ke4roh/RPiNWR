@@ -17,6 +17,7 @@ __author__ = 'ke4roh'
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from RPiNWR.Si4707 import *
+from RPiNWR.SAME import SAME_PATTERN
 import unittest
 import logging
 
@@ -28,7 +29,6 @@ class TestSi4707(unittest.TestCase):
         events = []
 
         with Si4707(i2c) as radio:
-            radio.register_event_listener(print_event)
             radio.register_event_listener(events.append)
             result = radio.do_command(PowerUp(function=15)).get(timeout=1)
             self.assertEqual("2.0", result.firmware)
@@ -40,7 +40,6 @@ class TestSi4707(unittest.TestCase):
         events = []
 
         with Si4707(i2c) as radio:
-            radio.register_event_listener(print_event)
             radio.register_event_listener(events.append)
             self.assertFalse(radio.radio_power)
             result = radio.do_command(
@@ -66,7 +65,6 @@ class TestSi4707(unittest.TestCase):
         events = []
 
         with Si4707(i2c) as radio:
-            radio.register_event_listener(print_event)
             radio.register_event_listener(events.append)
             radio.power_on({"frequency": 162.4, "properties": {}})
             radio.do_command(SetProperty("RX_VOLUME", 5)).get()
@@ -108,12 +106,8 @@ class TestSi4707(unittest.TestCase):
     def test_get_property(self):
         i2c = MockI2C()
 
-        def print_event(event):
-            print(str(event))
-
         with Si4707(i2c) as radio:
             radio.power_on({"frequency": 162.4})
-            radio.register_event_listener(print_event)
             self.assertEqual(63, radio.do_command(GetProperty("RX_VOLUME")).get())
 
     def test_rsq_interrupts(self):
@@ -123,7 +117,6 @@ class TestSi4707(unittest.TestCase):
         with Si4707(i2c) as radio:
             radio.power_on({"frequency": 162.4})
             radio.register_event_listener(events.append)
-            radio.register_event_listener(print_event)
             i2c.interrupts |= 8  # RSQ
             time.sleep(.05)
         rsqe = list(filter(lambda x: type(x) is ReceivedSignalQualityCheck, events))
@@ -139,7 +132,6 @@ class TestSi4707(unittest.TestCase):
         with Si4707(i2c) as radio:
             radio.power_on({"frequency": 162.4})
             radio.register_event_listener(events.append)
-            radio.register_event_listener(print_event)
             i2c.alert_tone(True)
             time.sleep(tone_duration)
             i2c.alert_tone(False)
@@ -161,6 +153,52 @@ class TestSi4707(unittest.TestCase):
         self.assertIsNone(asqe[0].duration)
         self.assertTrue(abs(asqe[1].time_complete - asqe[0].time_complete - asqe[1].duration) < 0.01)
 
+    def __filter_same_events(self, events, interrupt):
+        return list(filter(lambda x: type(x) is SameInterruptCheck and x.status[interrupt], events))
+
+    def __wait_for_eom_events(self, events, n=3, timeout=30):
+        timeout = time.time() + timeout
+        while len(self.__filter_same_events(events, "EOMDET")) < n and not time.time() >= timeout:
+            time.sleep(.02)
+
+    def test_send_message(self):
+        logging.basicConfig(level=logging.DEBUG)
+        i2c = MockI2C()
+        events = []
+        message = '-WXR-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS'
+
+        with Si4707(i2c) as radio:
+            radio.power_on({"frequency": 162.4})
+            radio.register_event_listener(events.append)
+            i2c.send_message(message=message, voice_duration=1, time_factor=0.1)
+            self.__wait_for_eom_events(events)
+
+        same_messages = list(filter(lambda x: type(x) is SAME.SAMEMessage, events))
+        self.assertEquals(1, len(same_messages))
+        self.assertEquals(message, same_messages[0].raw_message)
+        for interrupt in ["EOMDET", "HDRRDY", "PREDET"]:
+            times = len(self.__filter_same_events(events, interrupt))
+            self.assertEquals(3, times, "Interrupt %s happened %d times" % (interrupt, times))
+
+    def test_send_message_no_tone_2_headers(self):
+        # This will hit the timeout.
+        logging.basicConfig(level=logging.DEBUG)
+        i2c = MockI2C()
+        events = []
+        message = '-WXR-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS'
+
+        with Si4707(i2c) as radio:
+            radio.power_on({"frequency": 162.4})
+            radio.register_event_listener(events.append)
+            i2c.send_message(message=message, voice_duration=5, time_factor=0.1, header_count=2, tone=None)
+            self.__wait_for_eom_events(events)
+
+        same_messages = list(filter(lambda x: type(x) is SAME.SAMEMessage, events))
+        self.assertEquals(1, len(same_messages))
+        self.assertEquals(message, same_messages[0].raw_message)
+        for interrupt in ["HDRRDY", "PREDET"]:
+            times = len(self.__filter_same_events(events, interrupt))
+            self.assertEquals(2, times, "Interrupt %s happened %d times" % (interrupt, times))
 
 class MockI2C(object):
     # TODO split out the I2C mock from the Si4707 mock
@@ -187,6 +225,11 @@ class MockI2C(object):
         self.asq_started = False
         self.asq_tone = False
         self.asq_lock = threading.Lock()
+        self.same_status = [0] * 4
+        self.same_buffer = [0] * 255
+        self.same_confidence = [0] * 255
+        self.same_lock = threading.Lock()
+        self._logger = logging.getLogger(type(self).__name__)
 
     def reverseByteOrder(self, data):
         "Reverses the byte order of an int (16-bit) or long (32-bit) value"
@@ -279,6 +322,29 @@ class MockI2C(object):
             if self.bus[reg][0]:
                 self.interrupts ^= 8
             self.registers[0] = [128 | self.interrupts, 5, 1, 0, 3, 0, 0, 15]
+        elif reg == 0x54:  # WB_SAME_STATUS
+            with self.same_lock:
+                if self.bus[reg][0] & 1:  # INTACK
+                    self.interrupts ^= 4
+                if self.bus[reg][0] & 2:  # CLEARBUF
+                    for i in range(0, len(self.same_buffer)):
+                        self.same_buffer[i] = 0
+                        self.same_confidence[i] = 0
+                    for i in range(0, len(self.same_status)):
+                        self.same_status[i] = 0
+
+                # Now assemble the response
+                resp = self.registers[0] = [0] * 14
+                resp[0] = 128 | self.interrupts
+                for i in range(1, 4):
+                    resp[i] = self.same_status[i]
+                for i in range(0, 8):
+                    if self.bus[reg][1] + i < len(self.same_buffer):
+                        resp[i + 6] = self.same_buffer[self.bus[reg][1] + i]
+                        resp[int((7 - i) / 4) + 4] |= self.same_confidence[i] << (i % 4 * 2)
+
+                if self.bus[reg][0] & 1:  # INTACK
+                    self.same_status[1] = 0
         elif reg == 0x55:  # WB_ASQ_STATUS - alert tone detection
             with self.asq_lock:
                 if self.bus[reg][0]:
@@ -301,9 +367,93 @@ class MockI2C(object):
                 self.asq_tone = playing
                 self.interrupts |= 2
 
+    def send_message(self,
+                     message='-WXR-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS',
+                     tone=8.0, noise=None, header_count=3, voice_duration=15.0, eom=3, time_factor=1.0):
+        """
+        :param message: A valid SAME message
+        :param tone: the number of seconds for which to sound the tone, None for no tone
+        :param noise: A factor 0-1 (no more than 0.04ish for success), indicating how much noise to sprinkle into the
+           messages.  None indicates that noise should not be added.
+        :param header_count: The number of headers to send (3 or fewer in case of sketchy circumstances)
+        :param voice_duration: The number of seconds to wait before EOM
+        :param eom: The number of EOMs to send (3 or fewer)
+        :param time_factor: Multiply all the timings by this to expedite testing
+        """
+        # There is some parameter checking here because it is much easier to diagnose here than in a separate thread.
+        if not SAME_PATTERN.match(message):
+            raise ValueError()
+        for num in [tone, noise, header_count, voice_duration, eom]:
+            if num is not None:  # None should be fine for these things
+                num + 1  # This will give a ValueError if it's not a number
+        time_factor + 1  # This needs to be a number
 
-def print_event(event):
-    print(str(event))
+        threading.Timer(0, self.send_message0,
+                        [message, tone, time_factor, noise, header_count, voice_duration, eom]).start()
+
+    def send_message0(self, message, tone, time_factor, noise, header_count, voice_duration, eom):
+        ###
+        # Do these things in turn:
+        # SOM
+        # 3x:
+        #   PREAMBLE
+        #   (populate the message)
+        #   HDRRDY
+        # TONE?
+        # voice?
+        # EOM
+        ###
+        try:
+            with self.same_lock:
+                self.same_status[1] |= 4  # SOMDET - start of message
+                self.interrupts |= 4  # SAMEINT
+
+            # Messages come in at 520.83 baud, 8 bits per char, 65.1 chars/sec = .0154 sec/char
+            CHAR_TIME = 1 / 520.83 * 8
+
+            for m in range(0, header_count):
+                time.sleep(CHAR_TIME * 16 * time_factor)  # Preamble - 16 bytes
+                with self.same_lock:
+                    self.same_status[1] |= 2  # PREDET
+                    self.same_status[2] = 1  # Preamble detected
+                    self.interrupts |= 4  # SAMEINT
+
+                time.sleep(CHAR_TIME * 4 * time_factor)  # ZCZC
+                msg_start_time = time.time()
+                for i in range(0, len(message)):
+                    with self.same_lock:
+                        self.same_buffer[i] = ord(message[i]) & 0xFF
+                        self.same_confidence[i] = 3  # unless we introduce noise
+                        self.same_status[3] = max(i, self.same_status[3])
+                        self.same_status[2] = 2  # receiving SAME header
+                    sleep_for = CHAR_TIME * time_factor * i + msg_start_time - time.time()
+                    if sleep_for > 0:
+                        time.sleep(sleep_for)
+
+                with self.same_lock:
+                    self.same_status[2] = 3  # SAME header message complete
+                    self.same_status[1] |= 1  # HDRRDY
+                    self.interrupts |= 4  # SAMEINT
+                time.sleep(1 * time_factor)  # 1 sec pause between messages
+
+            if tone:
+                self.alert_tone(True)
+                time.sleep(tone * time_factor)
+                self.alert_tone(False)
+
+            if voice_duration:
+                time.sleep(voice_duration * time_factor)
+
+            for m in range(0, eom):
+                time.sleep(1 * time_factor)
+                time.sleep(CHAR_TIME * 4 * time_factor)
+                with self.same_lock:
+                    self.same_status[1] |= 8  # EOMDET
+                    self.same_status[2] = 0  # EOM detected
+                    self.interrupts |= 4  # SAMEINT
+
+        except Exception:
+            self._logger.exception("Exception in message generator")
 
 
 if __name__ == '__main__':

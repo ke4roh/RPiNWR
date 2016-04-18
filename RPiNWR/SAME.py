@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 __author__ = 'ke4roh'
-
+# Logic for parsing and manipulating SAME messages
+#
 # Copyright © 2016 James E. Scarborough
 #
 # This program is free software: you can redistribute it and/or modify
@@ -20,7 +21,7 @@ import re
 import time
 
 _ORIGINATORS = [
-    ("Broadcast station or cable system","EAS"),
+    ("Broadcast station or cable system", "EAS"),
     ("Civil authorities", "CIV"),
     ("National Weather Service", "WXR"),
     ("Primary Entry Point System", "PEP")
@@ -88,6 +89,7 @@ _EVENT_TYPES = [
 ]
 _EVENT_CODES = list([x[1] for x in _EVENT_TYPES])
 
+
 def _reconcile_character(bitstrue, bitsfalse, pattern):
     """
     :param bitstrue: an array of numbers specifying the weights favoring each bit in turn being true, LSB first
@@ -120,6 +122,7 @@ __SAME_CHARS = [
     '0123', __NUMERIC, __NUMERIC, '012', __NUMERIC, '012345', __NUMERIC, '-',
     __ALPHA, __ALPHA, __ALPHA, __ALPHA, '/', 'N', 'W', 'S'
 ]
+
 
 def average_message(messages):
     """
@@ -178,7 +181,7 @@ def average_message(messages):
         avgmsg += c
         confidences[i] = byte_confidence >> 3
 
-    # TODO consider a third level of resolving ambiguity from errror by further limiting the possibilities based
+    # TODO consider a third level of resolving ambiguity from error by further limiting the possibilities based
     #    on strings in each segment of the message.
     return avgmsg, confidences
 
@@ -186,20 +189,25 @@ def average_message(messages):
 SAME_PATTERN = re.compile('-(EAS|CIV|WXR|PEP)-([A-Z]{3})((?:-\\d{6})+)\\+(\\d{4})-(\\d{7})-([A-Z/]+)')
 
 class SAMEMessage(object):
-    def __init__(self, same_message):
+    def __init__(self, same_message, confidence):
         """
         The SAME message is parsed here.
         """
+        self.received_time = time.time()
+        self.raw_message = same_message
+        self.confidence = confidence
         m = SAME_PATTERN.match(same_message)
+        if not m:
+            raise ValueError("Message \"%s\" does not match the pattern." % same_message)
         (self.originator, self.event_type, geography, self.purge_time, self.issue_time, self.broadcaster) = m.group(
             *range(1, 7))
-        self.geography = geography.split()[1:]
+        self.geography = geography.split("-")[1:]
         now = time.gmtime(time.time())
         year = now.tm_year
         issue_jday = int(self.issue_time[0:3])
         if now.tm_yday < 10 and issue_jday > 355:
             year -= 1
-        elif now > 355 and issue_jday < 10:
+        elif now.tm_yday > 355 and issue_jday < 10:
             year += 1
         self.effective_time = time.mktime(time.strptime(str(year) + self.issue_time + 'UTC', '%Y%j%H%M%Z'))
         self.exipry_time = self.effective_time + int(self.purge_time[0:2]) * 60 * 60 + int(self.purge_time[2:4]) * 60
@@ -207,5 +215,5 @@ class SAMEMessage(object):
     def __str__(self):
         return \
             "SAMEMessage: { Originator: %s  Type: %s  Places: %s  issueTime: %s  purgeTime: %s  broadcaster: %s }" % \
-            (self.originator, self.event_type, self.geography.join(', '), self.issue_time, self.purge_time,
+            (self.originator, self.event_type, ", ".join(self.geography), self.issue_time, self.purge_time,
              self.broadcaster)
