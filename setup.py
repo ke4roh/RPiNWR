@@ -20,5 +20,7 @@ setup(
     url='https://github.com/ke4roh/RPiNWR',
     license='GNU GPL v.3',
     packages=find_packages(exclude=('tests', 'docs')),
+    setup_requires=['pytest-runner'],
+    tests_require=['pytest'],
     test_suite="tests",
 )

@@ -26,7 +26,7 @@ from threading import Timer
 
 class RPiNWRadio(object):
     """
-    A Weather Radio
+    A NOAA Weather Radio for Raspberry Pi
 
     This must be instantiated from the main thread - which is the default, because it sets
     interrupt handlers.  If you need to set your own interrupt handlers, ensure that you call
@@ -36,6 +36,7 @@ class RPiNWRadio(object):
     This class is responsible for
      - Interfacing with the Raspberry Pi board
      - Providing user-level access to and control of Si4707 (on, off, tune, volume, messages, alert tones)
+     - Passing along user-level messages from the radio chip
     """
     # TODO wrap this so that it will be cleaned up every time
     # --- see http://stackoverflow.com/questions/865115/how-do-i-correctly-clean-up-a-python-object#865272
