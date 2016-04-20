@@ -54,7 +54,10 @@ class Command(Symbol):
 
     def do_command(self, radio):
         try:
-            self.result = self.do_command0(radio)
+            result = self.do_command0(radio)
+            if result == self:
+                result = "self"
+            self.result = result
             if self.future:
                 self.future.result(self.result)
         except Exception as e:
@@ -329,6 +332,7 @@ class ReceivedSignalQualityCheck(InterruptHandler):
         self.snr_low = violation_flags & 4 != 0
         self.rssi_high = violation_flags & 2 != 0
         self.rssi_low = violation_flags & 1 != 0
+        return self
 
 
 class AlertToneCheck(InterruptHandler):
@@ -344,7 +348,7 @@ class AlertToneCheck(InterruptHandler):
         radio.hardware_io.writeList(self.value, [self.int_ack & 1])
         radio.wait_for_clear_to_send()
         history, present = \
-            struct.unpack(">xbb", bytes(radio.hardware_io.readList(0, 4)))
+            struct.unpack(">xbb", bytes(radio.hardware_io.readList(0, 3)))
         self.tone_start = history & 1 != 0
         self.tone_end = history & 2 != 0
         self.tone_on = present != 0

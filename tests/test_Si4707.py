@@ -284,6 +284,8 @@ class MockI2C(object):
         self.op(reg)
 
     def readList(self, reg, length):
+        while len(self.registers[reg]) < min(32, length):
+            self.registers[reg].append(0)
         return self.registers[reg][0:length]
 
     def readU8(self, reg):
