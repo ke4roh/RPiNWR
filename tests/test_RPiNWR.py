@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 
-from RPiNWR.RPiNWR import *
+from RPiNWR import *
 from tests.test_Si4707 import MockI2C
 import unittest
 
 class TestRPiNWR(unittest.TestCase):
 
     def testRadioPowerUp(self):
-        with RPiNWRadio(gpio=MockGPIO(), i2c=MockI2C()) as radio:
+        with Radio(gpio=MockGPIO(), i2c=MockI2C()) as radio:
             radio.power_on()
 
 
