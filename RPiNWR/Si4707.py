@@ -120,7 +120,17 @@ class Revision(Symbol):
 class Command(Symbol):
     def __init__(self, mnemonic=None, value=None):
         """
-        An instance of a command represents a postulated invocation of that command against the radio.
+        A Command represents a transactional exchange with the Si4707.
+
+        The instance, which relates to a particular execution, contains:
+          - configuration for a particular execution
+          - results from an execution
+          - a Future which will provide those results to callers from other thread(s)
+
+        Class methods:
+          - Communicate with radio.hardware_io to execute a transaction
+          - Update state on radio as necessary
+          - Dispatch user-level events relating to key events
 
         :param mnemonic: The short string from the manual about what this thing does, or null to use the class name
         :param value: The constant used to invoke this command
@@ -254,8 +264,11 @@ class PatchCommand(PowerUp):
             radio.wait_for_clear_to_send()
 
         new_rev = GetRevision().do_command0(radio)
+        # Revision [mchip_rev: 0, patch_id: 53653, component_revision: 2.0, part_number: 7, firmware: 2.0]
         if self.patch_id:
             assert new_rev.patch_id == self.patch_id
+        # TODO check chip/Firmware/Comp[onent] Rev
+
         return new_rev
 
     @staticmethod
@@ -459,6 +472,7 @@ class ReceivedSignalQualityCheck(InterruptHandler):
         self.snr_low = violation_flags & 4 != 0
         self.rssi_high = violation_flags & 2 != 0
         self.rssi_low = violation_flags & 1 != 0
+        return self
 
 
 class AlertToneCheck(InterruptHandler):
@@ -512,6 +526,9 @@ class SameInterruptCheck(InterruptHandler):
         if self.intack:
             if status["EOMDET"]:
                 radio.same_timeout = 0  # If there's a message to be had, it'll get processed shortly
+                if time.time() - radio.last_EOM > 5:  # Send EOM only once for 3 repetitions
+                    radio.last_EOM = time.time()
+                    radio._fire_event(EndOfMessage())
             elif status["PREDET"]:
                 radio.same_timeout = time.time() + 6
             elif status["HDRRDY"]:
@@ -587,16 +604,6 @@ class Si4707Event(object):
         return _simple_members(self)
 
 
-class RadioError(Si4707Event):
-    """
-    This event occurs if a command was not processed properly.
-    """
-
-    def __init__(self, command):
-        super(RadioError, self).__init__()
-        self.command = command
-
-
 class CommandExceptionEvent(Si4707Event):
     """
     There was a problem executing commands
@@ -634,6 +641,10 @@ class SAMEHeaderReceived(SAMEEvent):
     def __init__(self, headers):
         super(SAMEHeaderReceived, self).__init__()
         self.headers = headers
+
+
+class EndOfMessage(SAMEEvent):
+    pass
 
 
 class EventProcessingExceptionEvent(Si4707Event):
@@ -689,6 +700,7 @@ class Si4707(object):
         self._logger = logging.getLogger(type(self).__name__)
         self.same_messages = []
         self.same_timeout = float("inf")
+        self.last_EOM = 0
 
     def __enter__(self):
         for t in [threading.Thread(target=self.__command_loop),
@@ -817,11 +829,18 @@ class Si4707(object):
         if timeout is not None:
             expiry = timeout + time.time()
         while expiry is None or time.time() < expiry:
-            self.status = Status(self.hardware_io.readList(0, 1))
-            if self.status.is_clear_to_send():
-                return self.status
-            else:
-                time.sleep(.002)
+            try:
+                self.status = Status(self.hardware_io.readList(0, 1))
+                if self.status.is_clear_to_send():
+                    return self.status
+                else:
+                    time.sleep(.002)
+            except OSError as e:
+                if e.errno == 5:  # I/O error - GPIO is busted
+                    self.stop = 1
+                    self._logger.fatal("I/O error")
+                    self._logger.exception("I/O error")
+                raise
         raise NotClearToSend()
 
     def check_interrupts(self):
@@ -855,9 +874,6 @@ class Si4707(object):
             config.update(configuration)
 
         if config["power_on"].get("patch"):
-            # TODO check if the revision makes sense
-            # PupRevision [chip_revision: B, library_id: 9, part_number: 7, firmware: 2.0]
-            # Revision [mchip_rev: 0, patch_id: 53653, component_revision: 2.0, part_number: 7, firmware: 2.0]
             self.do_command(PatchCommand(**config["power_on"]))
         else:
             self.do_command(PowerUp())
@@ -908,8 +924,8 @@ class Si4707(object):
 
     def do_command(self, command):
         """
-        Put a command on the queue for execution.
-
+        Put a command on the queue for execution.  Call .get() on the result to get the return value, any
+        exceptions, and to block until the command's completion.
         """
         if self.stop:
             raise Si4707StoppedException()

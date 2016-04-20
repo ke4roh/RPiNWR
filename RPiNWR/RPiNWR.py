@@ -18,7 +18,7 @@ __author__ = 'ke4roh'
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import time
-from RPiNWR.Si4707 import Si4707
+from RPiNWR.Si4707 import Si4707, AlertToneCheck, SAMEEvent, TuneFrequency, SAMEMessageReceivedEvent, EndOfMessage
 import signal
 import logging
 from threading import Timer
@@ -43,6 +43,8 @@ class RPiNWRadio(object):
 
     def __init__(self, gpio=None, i2c=None):
         self._logger = logging.getLogger(type(self).__name__)
+        self.event_listeners = []
+        self.radio = None
         if gpio is None:
             import RPi.GPIO
 
@@ -94,6 +96,12 @@ class RPiNWRadio(object):
 
         time.sleep(1)
         self.radio = Si4707(self.__i2c).__enter__()
+
+        def pass_along_user_events(event):
+            if isinstance(event, SAMEEvent) or isinstance(event, AlertToneCheck):
+                self.__dispatch_event(event)
+
+        self.radio.register_event_listener(pass_along_user_events)
         return self
 
     def power_on(self, configuration=None):
@@ -108,7 +116,7 @@ class RPiNWRadio(object):
         self.radio.power_on(configuration)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        logging.info("Cleaning up RPiNWR")
+        self._logger.info("Cleaning up RPiNWR")
         if self.radio is not None:
             r = self.radio
             self.radio = None
@@ -154,21 +162,44 @@ class RPiNWRadio(object):
         """
         self.radio.mute(hush)
 
+    def register_event_listener(self, listener):
+        self.event_listeners.append(listener)
+
+    def __dispatch_event(self, event):
+        for l in self.event_listeners:
+            try:
+                l(event)
+            except Exception:
+                logging.exception("Processing user event")
+
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO, filename="radio.log")
 
-    def print_event(event):
-        logging.debug(str(event))
+    def log_event(event):
+        logging.info(str(event))
+
+    def log_tune(event):
+        if type(event) is TuneFrequency:
+            logging.info("Tuned to %.3f  rssi=%d  snr=%d" % (event.frequency / 400.0, event.rssi, event.snr))
+
+    def unmute_for_message(event):
+        if type(event) is SAMEMessageReceivedEvent:
+            radio.mute(False)
+        if type(event) is EndOfMessage:
+            radio.mute(True)
 
     try:
         with RPiNWRadio() as radio:
-            radio.radio.register_event_listener(print_event)
+            radio.register_event_listener(log_event)
+            radio.radio.register_event_listener(log_tune)
+            radio.register_event_listener(unmute_for_message)
             radio.power_on()
             radio.mute(False)
             radio.set_volume(63)
             Timer(15, radio.mute, [True]).start()  # Mute the radio after 15 seconds
-            time.sleep(20)  # In a more realistic scenario, this would loop forever.
+            while True:
+                time.sleep(20)
             # The radio turns off when the with block exits
 
     except KeyboardInterrupt:

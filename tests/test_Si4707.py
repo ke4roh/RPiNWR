@@ -162,7 +162,6 @@ class TestSi4707(unittest.TestCase):
             time.sleep(.02)
 
     def test_send_message(self):
-        logging.basicConfig(level=logging.DEBUG)
         i2c = MockI2C()
         events = []
         message = '-WXR-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS'
@@ -179,10 +178,10 @@ class TestSi4707(unittest.TestCase):
         for interrupt in ["EOMDET", "HDRRDY", "PREDET"]:
             times = len(self.__filter_same_events(events, interrupt))
             self.assertEquals(3, times, "Interrupt %s happened %d times" % (interrupt, times))
+        self.assertEquals(1, len(list(filter(lambda x: type(x) is EndOfMessage, events))))
 
     def test_send_message_no_tone_2_headers(self):
         # This will hit the timeout.
-        logging.basicConfig(level=logging.DEBUG)
         i2c = MockI2C()
         events = []
         message = '-WXR-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS'
@@ -190,7 +189,7 @@ class TestSi4707(unittest.TestCase):
         with Si4707(i2c) as radio:
             radio.power_on({"frequency": 162.4})
             radio.register_event_listener(events.append)
-            i2c.send_message(message=message, voice_duration=5, time_factor=0.1, header_count=2, tone=None)
+            i2c.send_message(message=message, voice_duration=50, time_factor=0.1, header_count=2, tone=None)
             self.__wait_for_eom_events(events)
 
         same_messages = list(filter(lambda x: type(x) is SAMEMessageReceivedEvent, events))
@@ -199,6 +198,29 @@ class TestSi4707(unittest.TestCase):
         for interrupt in ["HDRRDY", "PREDET"]:
             times = len(self.__filter_same_events(events, interrupt))
             self.assertEquals(2, times, "Interrupt %s happened %d times" % (interrupt, times))
+
+    def test_send_invalid_message(self):
+        # This will hit the timeout.
+        i2c = MockI2C()
+        events = []
+        message = '-WWF-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS'
+
+        with Si4707(i2c) as radio:
+            radio.power_on({"frequency": 162.4})
+            radio.register_event_listener(events.append)
+            i2c.send_message(message=message, time_factor=0.1, tone=None, invalid_message=True)
+            self.__wait_for_eom_events(events)
+
+        same_messages = list(filter(lambda x: type(x) is InvalidSAMEMessageReceivedEvent, events))
+        self.assertEquals(1, len(same_messages))
+        self.assertEquals(message, same_messages[0].headers[0][0])
+        for interrupt in ["HDRRDY", "PREDET"]:
+            times = len(self.__filter_same_events(events, interrupt))
+            self.assertEquals(3, times, "Interrupt %s happened %d times" % (interrupt, times))
+        ismre = list(filter(lambda x: type(x) is InvalidSAMEMessageReceivedEvent, events))
+        self.assertEquals(1, len(ismre))
+        self.assertEquals(message, ismre[0].headers[0][0])
+
 
 class MockI2C(object):
     # TODO split out the I2C mock from the Si4707 mock
@@ -369,7 +391,8 @@ class MockI2C(object):
 
     def send_message(self,
                      message='-WXR-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS',
-                     tone=8.0, noise=None, header_count=3, voice_duration=15.0, eom=3, time_factor=1.0):
+                     tone=8.0, noise=None, header_count=3, voice_duration=15.0, eom=3, time_factor=1.0,
+                     invalid_message=False):
         """
         :param message: A valid SAME message
         :param tone: the number of seconds for which to sound the tone, None for no tone
@@ -379,9 +402,10 @@ class MockI2C(object):
         :param voice_duration: The number of seconds to wait before EOM
         :param eom: The number of EOMs to send (3 or fewer)
         :param time_factor: Multiply all the timings by this to expedite testing
+        :param invalid_message: to permit an invalid message going into the Si4707 emulation as if by noise
         """
         # There is some parameter checking here because it is much easier to diagnose here than in a separate thread.
-        if not SAME_PATTERN.match(message):
+        if not invalid_message and not SAME_PATTERN.match(message):
             raise ValueError()
         for num in [tone, noise, header_count, voice_duration, eom]:
             if num is not None:  # None should be fine for these things

@@ -22,6 +22,7 @@ import random
 import unittest
 from RPiNWR.SAME import *
 
+
 class TestSAME(unittest.TestCase):
     @staticmethod
     def add_noise(msg, rate, sd=.02):
@@ -37,7 +38,7 @@ class TestSAME(unittest.TestCase):
             raise ValueError("0<=rate<=1")
 
         def confidence0(r):
-            return int(min(3, max(1, ceil(3 - 30 * r))))
+            return int(min(3, max(0, ceil(3 - 50 * r))))
 
         new_message = ''
         confidence = []
@@ -52,6 +53,18 @@ class TestSAME(unittest.TestCase):
 
         return new_message, confidence
 
+    def _test_add_noise(self):
+        random.seed(0)
+        clear_message = 'ZCZC-WXR-TOR-039173-039051-139069+0030-1591829-KCLE/NWS-'
+        mess, conf = self.add_noise(clear_message, 0.06, .03)
+        changed = [[0, 0], [0, 0], [0, 0], [0, 0]]
+        for i in range(0, len(clear_message)):
+            changed[conf[i]][0] += 1
+            changed[conf[i]][1] += (clear_message[i] == mess[i]) & 1
+        for i in range(0, 4):
+            print("c(%d)=%.0f%%  n=%d\n" % (i, changed[i][1] * 100.0 / changed[i][0], conf.count(i)))
+        self.fail(str(msg))
+
     @staticmethod
     def make_noisy_messages(noise):
         # mimic spotty reception this way.
@@ -65,11 +78,11 @@ class TestSAME(unittest.TestCase):
         ]
 
     def testAverageMessage(self):
-        clear_message, messages = self.make_noisy_messages(.04155)
+        clear_message, messages = self.make_noisy_messages(.03)
         (msg, confidence) = average_message(messages)
         self.assertEqual(clear_message, msg)
-        self.assertEqual(3, min(confidence))
-        self.assertEqual(9, max(confidence))
+        self.assertEqual(1, min(confidence))
+        self.assertEqual(8, max(confidence))
 
     def testAverageMessageOfJunkHasLowConfidence(self):
         clear_message, messages = self.make_noisy_messages(.05)
