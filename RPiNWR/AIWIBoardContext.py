@@ -77,17 +77,19 @@ class AIWIBoardContext(Context):
         if not self.__signals_trapped:
             self.__signals_trapped = True
             for sig in [signal.SIGQUIT, signal.SIGTERM, signal.SIGTSTP]:
-                if signal.getsignal(sig) == signal.SIG_DFL:
-                    signal.signal(sig, self.__exit__)
-                else:
+                if hasattr(signal.getsignal(sig), '__call__'):
                     deleg = signal.getsignal(sig)
 
-                    def delegate(exc_type, exc_val, exc_tb):
-                        self.__exit__(exc_type, exc_val, exc_tb)
-                        deleg(exc_type, exc_val, exc_tb)
+                    def delegate(signum, stack):
+                        self.__exit__(None, None, None)
+                        deleg(signum, stack)
 
                     signal.signal(sig, delegate)
-                    # signal.signal(signal.SIGHUP, handler)
+                else:
+                    def delegate(signum, stack):
+                        self.__exit__(None, None, None)
+
+                    signal.signal(sig, delegate)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
