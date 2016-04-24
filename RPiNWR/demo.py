@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 __author__ = 'ke4roh'
-# User-level control of a weather radio based on Si4707
+# Demo weather radio app based on Si4707
 #
 # Copyright © 2016 James E. Scarborough
 #
@@ -16,17 +16,21 @@ __author__ = 'ke4roh'
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import logging
-from RPiNWR import Radio
+from RPiNWR.Si4707 import Si4707
 from RPiNWR.Si4707.events import *
 from RPiNWR.Si4707.commands import TuneFrequency
+from RPiNWR.AIWIBoardContext import AIWIBoardContext
 from threading import Timer
+import time
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, filename="radio.log", format='%(asctime)-15s %(message)s')
 
     def log_event(event):
-        logging.info(str(event))
+        if isinstance(event, SAMEEvent):
+            logging.info(str(event))
 
     def log_tune(event):
         if type(event) is TuneFrequency:
@@ -39,17 +43,22 @@ if __name__ == '__main__':
             radio.mute(True)
 
     try:
-        with Radio() as radio:
-            radio.register_event_listener(log_event)
-            radio.chip.register_event_listener(log_tune)
-            radio.register_event_listener(unmute_for_message)
-            radio.power_on()
-            radio.mute(False)
-            radio.set_volume(63)
-            Timer(15, radio.mute, [True]).start()  # Mute the radio after 15 seconds
-            while True:
-                time.sleep(20)
-                # The radio turns off when the with block exits
+        with AIWIBoardContext() as context:
+            with Si4707(context) as radio:
+                radio.register_event_listener(log_event)
+                radio.register_event_listener(log_tune)
+                radio.register_event_listener(unmute_for_message)
+                radio.power_on()
+                radio.mute(False)
+                radio.set_volume(63)
+                Timer(15, radio.mute, [True]).start()  # Mute the radio after 15 seconds
+                while True:
+                    # Run these blinking commands through the command queue to see that it's still working
+                    radio.queue_callback(context.led, [True])
+                    time.sleep(.5)
+                    radio.queue_callback(context.led, [False])
+                    time.sleep(4.5)
+                    # The radio turns off when the with block exits
 
     except KeyboardInterrupt:
-        pass # suppress the stack trace
+        pass  # suppress the stack trace

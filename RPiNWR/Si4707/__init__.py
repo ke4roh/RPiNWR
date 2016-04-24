@@ -32,8 +32,9 @@ from RPiNWR.Si4707.data import *
 from RPiNWR.Si4707.events import *
 from RPiNWR.Si4707.exceptions import *
 
+
 class Si4707(object):
-    def __init__(self, hardware_io):
+    def __init__(self, context):
         self.__event_queue = queue.Queue(maxsize=50)
         self.__command_queue = queue.PriorityQueue(maxsize=50)
         self.__command_serial_number = 0
@@ -42,7 +43,7 @@ class Si4707(object):
         self.__delayed_events = []
         self.__delayed_event_lock = threading.Lock()
         self.tune_after = float("inf")
-        self.hardware_io = hardware_io
+        self.context = context
         self.radio_power = False  # Off to begin with
         self.status = None  # Gonna fix this in __enter__
         self.stop = False  # True to stop threads
@@ -54,12 +55,13 @@ class Si4707(object):
         self.last_EOM = 0
 
     def __enter__(self):
-        for t in [threading.Thread(target=self.__command_loop),
-                  threading.Thread(target=self.__event_loop)]:
-            t.setDaemon(False)
-            t.start()
         try:
+            self.context.reset_radio()
             self.wait_for_clear_to_send(timeout=5)
+            for t in [threading.Thread(target=self.__command_loop),
+                      threading.Thread(target=self.__event_loop)]:
+                t.setDaemon(False)
+                t.start()
             self._logger.info("Si4707 ready")
         except Exception:
             self._logger.exception("Startup failed")
@@ -87,7 +89,7 @@ class Si4707(object):
                     self.do_command(SameInterruptCheck(dispatch_message=True))
 
                 # Run any pending command
-                command = self.__command_queue.get_nowait()[1]
+                command = self.__command_queue.get(block=True, timeout=0.05)[1]
                 command.do_command(self)
                 self._logger.debug("Executed " + str(command))
                 if command.exception:
@@ -102,8 +104,6 @@ class Si4707(object):
                         with self.__command_serial_number_lock:
                             if self.__command_queue.empty():
                                 self.__command_serial_number = 0
-
-                    time.sleep(0.05)
                 except Exception:
                     self._logger.exception("housekeeping failed")
             except Exception as e:
@@ -181,7 +181,7 @@ class Si4707(object):
             expiry = timeout + time.time()
         while expiry is None or time.time() < expiry:
             try:
-                self.status = Status(self.hardware_io.readList(0, 1))
+                self.status = Status(self.context.read_bytes(1))
                 if self.status.is_clear_to_send():
                     return self.status
                 else:
@@ -203,7 +203,7 @@ class Si4707(object):
         which interrupts.
         """
         self.wait_for_clear_to_send(timeout=5)
-        self.hardware_io.write8(0x14, 0)  # GET_INT_STATUS Tell Si4707 to populate interrupt bits
+        self.context.write_bytes([0x14])  # GET_INT_STATUS Tell Si4707 to populate interrupt bits
         return self.wait_for_clear_to_send(timeout=.1)
 
     def register_event_listener(self, callback):
@@ -266,9 +266,9 @@ class Si4707(object):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         try:
-            self.shutdown(False)
+            self.shutdown(True)
         except Exception as e:
-            print(str(e))
+            self._logger.exception("cleaning up")
         finally:
             self.__shutdown = True
             self.stop = True
@@ -289,6 +289,18 @@ class Si4707(object):
         command.future = Future()
         self.__command_queue.put_nowait((serial << command.get_priority(), command))
         return command.future
+
+    def queue_callback(self, func, args=None, kw_args=None):
+        """
+        Call the named function from the command queue. Block until it's done,
+        return its result.
+
+        :param func:
+        :param args:
+        :param kw_args:
+        :return: Whatever the function returned
+        """
+        return self.do_command(Callback(func, args, kw_args)).get()
 
     def get_property(self, property_mnemonic):
         """
@@ -411,3 +423,34 @@ class Future(object):
             self.__complete = True
             self.__condition.notify()
 
+
+class Context(object):
+    """
+    A context gives instructions on how to reset the radio and send and receive bytes.
+    It is also responsible for cleaning itself up as necessary.
+    """
+
+    def __init__(self):
+        if type(self) is Context:
+            raise NotImplemented()
+
+    def reset_radio(self):
+        """
+        At a minimum, this will happen first.  It may also happen later on.
+        """
+        raise NotImplemented()
+
+    def write_bytes(self, data):
+        """
+        Send bytes to the radio.
+        :param data: an array of numbers to be interpreted as bytes, or bytes()
+        """
+        raise NotImplemented()
+
+    def read_bytes(self, num_bytes):
+        """
+        Return bytes from the radio
+        :param num_bytes: How many do you want? (Max ~32)
+        :return: bytes()
+        """
+        raise NotImplemented()

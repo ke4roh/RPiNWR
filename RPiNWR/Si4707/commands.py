@@ -38,7 +38,7 @@ class Command(Symbol):
           - a Future which will provide those results to callers from other thread(s)
 
         Class methods:
-          - Communicate with radio.hardware_io to execute a transaction
+          - Communicate with radio.context to execute a transaction
           - Update state on radio as necessary
           - Dispatch user-level events relating to key events
 
@@ -73,7 +73,7 @@ class Command(Symbol):
 
     def do_command0(self, radio):
         # This implementation will handle a rudimentary command with no args
-        radio.hardware_io.write8(self.value, 0)
+        radio.context.write_bytes([self.value])
         return radio.wait_for_clear_to_send()
 
     def _check_interrupt(self, radio):
@@ -125,7 +125,7 @@ class PowerUp(Command):
     def do_command0(self, radio):
         result = self.do_command00(radio)
         if self.function == 15:
-            result = radio.revision = PupRevision(radio.hardware_io.readList(0, 8))
+            result = radio.revision = PupRevision(radio.context.read_bytes(8))
         else:
             radio.radio_power = True
             radio._fire_event(RadioPowerEvent(True))
@@ -138,13 +138,13 @@ class PowerUp(Command):
         return result
 
     def do_command00(self, radio):
-        radio.hardware_io.writeList(self.value, [
-            _bit(self.cts_interrupt_enable, 7) |
-            _bit(self.gpo2_output_enable, 6) |
-            _bit(self.patch, 5) |
-            _bit(self.crystal_oscillator_enable, 4) |
-            self.function,
-            self.opmode])
+        radio.context.write_bytes([self.value,
+                                   _bit(self.cts_interrupt_enable, 7) |
+                                   _bit(self.gpo2_output_enable, 6) |
+                                   _bit(self.patch, 5) |
+                                   _bit(self.crystal_oscillator_enable, 4) |
+                                   self.function,
+                                   self.opmode])
         return radio.wait_for_clear_to_send()
 
     def get_priority(self):
@@ -174,7 +174,7 @@ class PatchCommand(PowerUp):
         patch = self.__decompress_patch(self.patch)
 
         for i in range(0, len(patch), 8):
-            radio.hardware_io.writeList(patch[i], list(patch[i + 1:i + 8]))
+            radio.context.write_bytes(list(patch[i:i + 8]))
             radio.wait_for_clear_to_send()
 
         new_rev = GetRevision().do_command0(radio)
@@ -211,7 +211,7 @@ class GetRevision(CommandRequiringPowerUp):
 
     def do_command0(self, radio):
         super(GetRevision, self).do_command0(radio)
-        revision = radio.revision = Revision(radio.hardware_io.readList(0, 9))
+        revision = radio.revision = Revision(radio.context.read_bytes(9))
         return revision
 
 
@@ -238,10 +238,9 @@ class SetProperty(CommandRequiringPowerUp):
             raise ValueError("0x%04X out of range" % new_value)
 
     def do_command0(self, radio):
-        radio.hardware_io.writeList(
-            self.value,
-            list(struct.pack(">bHH", 0, self.property.code, self.property.value))
-        )
+        c = [self.value]
+        c.extend(list(struct.pack(">bHH", 0, self.property.code, self.property.value)))
+        radio.context.write_bytes(c)
 
 
 class GetProperty(CommandRequiringPowerUp):
@@ -250,9 +249,9 @@ class GetProperty(CommandRequiringPowerUp):
         self.property = Property(property_mnemonic)
 
     def do_command0(self, radio):
-        radio.hardware_io.writeList(self.value, [0, self.property.code >> 8, self.property.code & 0xFF])
+        radio.context.write_bytes([self.value, 0, self.property.code >> 8, self.property.code & 0xFF])
         radio.wait_for_clear_to_send()
-        self.property.value = struct.unpack(">xxH", bytes(radio.hardware_io.readList(0, 4)))[0]
+        self.property.value = struct.unpack(">xxH", bytes(radio.context.read_bytes(4)))[0]
         return self.property.value
 
 
@@ -272,8 +271,9 @@ class TuneFrequency(CommandRequiringPowerUp):
         while time.time() < radio.tune_after:
             # check back occasionally to see if the tune_after might have changed favorably
             time.sleep(max(.1, radio.tune_after - time.time()))
-
-        radio.hardware_io.writeList(self.value, list(struct.pack(">bH", 0, self.frequency)))
+        c = [self.value]
+        c.extend(list(struct.pack(">bH", 0, self.frequency)))
+        radio.context.write_bytes(c)
         radio.tone_start = None
         while not radio.check_interrupts().is_seek_tune_complete():  # wait for STC
             time.sleep(0.02)
@@ -295,9 +295,9 @@ class TuneStatus(CommandRequiringPowerUp):
         self.snr = None
 
     def do_command0(self, radio):
-        radio.hardware_io.writeList(self.value, [self.ack_stc & 1])  # Acknowledge STC, get tune status
+        radio.context.write_bytes([self.value, self.ack_stc & 1])  # Acknowledge STC, get tune status
         radio.wait_for_clear_to_send()
-        bl = radio.hardware_io.readList(0, 6)
+        bl = radio.context.read_bytes(6)
         self.frequency, self.rssi, self.snr = struct.unpack(">xxHbb", bytes(bl))
         return self.frequency / 400.0, self.rssi, self.snr
 
@@ -322,10 +322,10 @@ class ReceivedSignalQualityCheck(InterruptHandler):
         self.rssi_low = None
 
     def do_command0(self, radio):
-        radio.hardware_io.writeList(self.value, [self.ack_rsq & 1])
+        radio.context.write_bytes([self.value, self.ack_rsq & 1])
         radio.wait_for_clear_to_send()
         violation_flags, validity, self.rssi, self.asnr, self.frequency_offset = \
-            struct.unpack(">xbbxbbxb", bytes(radio.hardware_io.readList(0, 8)))
+            struct.unpack(">xbbxbbxb", bytes(radio.context.read_bytes(8)))
         self.afc_rail = validity & 2 != 0
         self.valid_channel = validity & 1 != 0
         self.snr_high = violation_flags & 8 != 0
@@ -345,10 +345,10 @@ class AlertToneCheck(InterruptHandler):
         self.duration = None
 
     def do_command0(self, radio):
-        radio.hardware_io.writeList(self.value, [self.int_ack & 1])
+        radio.context.write_bytes([self.value, self.int_ack & 1])
         radio.wait_for_clear_to_send()
         history, present = \
-            struct.unpack(">xbb", bytes(radio.hardware_io.readList(0, 3)))
+            struct.unpack(">xbb", bytes(radio.context.read_bytes(3)))
         self.tone_start = history & 1 != 0
         self.tone_end = history & 2 != 0
         self.tone_on = present != 0
@@ -428,9 +428,9 @@ class SameInterruptCheck(InterruptHandler):
         return msg
 
     def __get_status(self, radio, readaddr=0, clearbuf=False, intack=False):
-        radio.hardware_io.writeList(self.value, [clearbuf < 1 | intack, readaddr])
+        radio.context.write_bytes([self.value, clearbuf < 1 | intack, readaddr])
         radio.wait_for_clear_to_send()
-        data = radio.hardware_io.readList(0, 14)
+        data = radio.context.read_bytes(14)
         confidence = [0] * 8
         for i in range(0, 8):
             confidence[i] = data[int((7 - i) / 4) + 4] >> (i % 4 * 2) & 0x3
@@ -445,3 +445,27 @@ class SameInterruptCheck(InterruptHandler):
             "CONFIDENCE": confidence,
             "MESSAGE": data[6:14]
         }
+
+
+class Callback(Command):
+    """
+    As a convenience to call a function from the command queue (to change an LED or a relay which might
+    be related to the context and not thread-safe, for example).  Do not make this take long, because
+    we have to get back over to checking the interrupts fairly quickly.  If you have something that will
+    take a long time, run it from the event queue or some other thread.
+    """
+
+    def __init__(self, function, args=None, kw_args=None):
+        super(Callback, self).__init__(mnemonic="Callback")
+        self.function = function
+        self.args = args
+        self.kw_args = kw_args
+
+    def do_command0(self, radio):
+        a = self.args
+        if a is None:
+            a = []
+        k = self.kw_args
+        if k is None:
+            k = {}
+        return self.function(*a, **k)

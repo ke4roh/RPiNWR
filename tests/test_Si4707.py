@@ -25,27 +25,28 @@ import logging
 class TestSi4707(unittest.TestCase):
     def test_power_up(self):
         logging.basicConfig(level=logging.INFO)
-        i2c = MockI2C()
         events = []
 
-        with Si4707(i2c) as radio:
-            radio.register_event_listener(events.append)
-            result = radio.do_command(PowerUp(function=15)).get(timeout=1)
-            self.assertEqual("2.0", result.firmware)
-            self.assertEqual(1, len(events))
+        with MockContext() as context:
+            with Si4707(context) as radio:
+                radio.register_event_listener(events.append)
+                result = radio.do_command(PowerUp(function=15)).get(timeout=1)
+                self.assertEqual("2.0", result.firmware)
+                time.sleep(.01) # The event will come later, after the command is done.
+                self.assertEqual(1, len(events))
 
     def test_patch_command(self):
         logging.basicConfig(level=logging.INFO)
-        i2c = MockI2C()
         events = []
 
-        with Si4707(i2c) as radio:
-            radio.register_event_listener(events.append)
-            self.assertFalse(radio.radio_power)
-            result = radio.do_command(
-                PatchCommand(DEFAULT_CONFIG["power_on"]["patch"], DEFAULT_CONFIG["power_on"]["patch_id"])).get(
-                timeout=500)
-            self.assertTrue(radio.radio_power)
+        with MockContext() as context:
+            with Si4707(context) as radio:
+                radio.register_event_listener(events.append)
+                self.assertFalse(radio.radio_power)
+                result = radio.do_command(
+                    PatchCommand(DEFAULT_CONFIG["power_on"]["patch"], DEFAULT_CONFIG["power_on"]["patch_id"])).get(
+                    timeout=500)
+                self.assertTrue(radio.radio_power)
 
         # Power Down is supposed to happen as part of the __exit__ routine
         self.assertEquals(PowerDown, type(events[-1]))
@@ -55,21 +56,21 @@ class TestSi4707(unittest.TestCase):
             def do_command0(self, r):
                 raise NotImplemented("Oh no!")
 
-        i2c = MockI2C()
-        with Si4707(i2c) as radio:
-            future = radio.do_command(ExceptionalCommand())
-            self.assertRaises(Exception, future.get)
+        with MockContext() as context:
+            with Si4707(context) as radio:
+                future = radio.do_command(ExceptionalCommand())
+                self.assertRaises(Exception, future.get)
 
     def test_set_property(self):
-        i2c = MockI2C()
         events = []
 
-        with Si4707(i2c) as radio:
-            radio.register_event_listener(events.append)
-            radio.power_on({"frequency": 162.4, "properties": {}})
-            radio.do_command(SetProperty("RX_VOLUME", 5)).get()
-            self.assertTrue(5, i2c.props[0x4000])
-            self.assertRaises(ValueError, SetProperty, "RX_VOLUME", 66)
+        with MockContext() as context:
+            with Si4707(context) as radio:
+                radio.register_event_listener(events.append)
+                radio.power_on({"frequency": 162.4, "properties": {}})
+                radio.do_command(SetProperty("RX_VOLUME", 5)).get()
+                self.assertTrue(5, context.props[0x4000])
+                self.assertRaises(ValueError, SetProperty, "RX_VOLUME", 66)
 
         # Wait up to 2 sec for the shutdown to finish (it should go really fast)
         timeout = time.time() + 2
@@ -104,38 +105,37 @@ class TestSi4707(unittest.TestCase):
         self.assertTrue(checked_rtt)
 
     def test_get_property(self):
-        i2c = MockI2C()
-
-        with Si4707(i2c) as radio:
-            radio.power_on({"frequency": 162.4})
-            self.assertEqual(63, radio.do_command(GetProperty("RX_VOLUME")).get())
+        with MockContext() as context:
+            with Si4707(context) as radio:
+                radio.power_on({"frequency": 162.4})
+                self.assertEqual(63, radio.do_command(GetProperty("RX_VOLUME")).get())
 
     def test_rsq_interrupts(self):
-        i2c = MockI2C()
         events = []
 
-        with Si4707(i2c) as radio:
-            radio.power_on({"frequency": 162.4})
-            radio.register_event_listener(events.append)
-            i2c.interrupts |= 8  # RSQ
-            time.sleep(.05)
+        with MockContext() as context:
+            with Si4707(context) as radio:
+                radio.power_on({"frequency": 162.4})
+                radio.register_event_listener(events.append)
+                context.interrupts |= 8  # RSQ
+                time.sleep(.05)
         rsqe = list(filter(lambda x: type(x) is ReceivedSignalQualityCheck, events))
         self.assertEqual(1, len(rsqe))
         self.assertEqual(15, rsqe[0].frequency_offset)
 
     def test_alert_tone_detection(self):  # WB_ASQ_STATUS
-        i2c = MockI2C()
         events = []
         tone_duration = 0.5
         tone_duration_tolerance = 0.1
 
-        with Si4707(i2c) as radio:
-            radio.power_on({"frequency": 162.4})
-            radio.register_event_listener(events.append)
-            i2c.alert_tone(True)
-            time.sleep(tone_duration)
-            i2c.alert_tone(False)
-            time.sleep(0.05)
+        with MockContext() as context:
+            with Si4707(context) as radio:
+                radio.power_on({"frequency": 162.4})
+                radio.register_event_listener(events.append)
+                context.alert_tone(True)
+                time.sleep(tone_duration)
+                context.alert_tone(False)
+                time.sleep(0.05)
 
         asqe = list(filter(lambda x: type(x) is AlertToneCheck, events))
         self.assertEqual(2, len(asqe))
@@ -162,15 +162,15 @@ class TestSi4707(unittest.TestCase):
             time.sleep(.02)
 
     def test_send_message(self):
-        i2c = MockI2C()
         events = []
         message = '-WXR-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS'
 
-        with Si4707(i2c) as radio:
-            radio.power_on({"frequency": 162.4})
-            radio.register_event_listener(events.append)
-            i2c.send_message(message=message, voice_duration=1, time_factor=0.1)
-            self.__wait_for_eom_events(events)
+        with MockContext() as context:
+            with Si4707(context) as radio:
+                radio.power_on({"frequency": 162.4})
+                radio.register_event_listener(events.append)
+                context.send_message(message=message, voice_duration=1, time_factor=0.1)
+                self.__wait_for_eom_events(events)
 
         same_messages = list(filter(lambda x: type(x) is SAMEMessageReceivedEvent, events))
         self.assertEquals(1, len(same_messages))
@@ -182,15 +182,15 @@ class TestSi4707(unittest.TestCase):
 
     def test_send_message_no_tone_2_headers(self):
         # This will hit the timeout.
-        i2c = MockI2C()
         events = []
         message = '-WXR-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS'
 
-        with Si4707(i2c) as radio:
-            radio.power_on({"frequency": 162.4})
-            radio.register_event_listener(events.append)
-            i2c.send_message(message=message, voice_duration=50, time_factor=0.1, header_count=2, tone=None)
-            self.__wait_for_eom_events(events)
+        with MockContext() as context:
+            with Si4707(context) as radio:
+                radio.power_on({"frequency": 162.4})
+                radio.register_event_listener(events.append)
+                context.send_message(message=message, voice_duration=50, time_factor=0.1, header_count=2, tone=None)
+                self.__wait_for_eom_events(events)
 
         same_messages = list(filter(lambda x: type(x) is SAMEMessageReceivedEvent, events))
         self.assertEquals(1, len(same_messages))
@@ -201,15 +201,15 @@ class TestSi4707(unittest.TestCase):
 
     def test_send_invalid_message(self):
         # This will hit the timeout.
-        i2c = MockI2C()
         events = []
         message = '-WWF-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS'
 
-        with Si4707(i2c) as radio:
-            radio.power_on({"frequency": 162.4})
-            radio.register_event_listener(events.append)
-            i2c.send_message(message=message, time_factor=0.1, tone=None, invalid_message=True)
-            self.__wait_for_eom_events(events)
+        with MockContext() as context:
+            with Si4707(context) as radio:
+                radio.power_on({"frequency": 162.4})
+                radio.register_event_listener(events.append)
+                context.send_message(message=message, time_factor=0.1, tone=None, invalid_message=True)
+                self.__wait_for_eom_events(events)
 
         same_messages = list(filter(lambda x: type(x) is InvalidSAMEMessageReceivedEvent, events))
         self.assertEquals(1, len(same_messages))
@@ -222,7 +222,21 @@ class TestSi4707(unittest.TestCase):
         self.assertEquals(message, ismre[0].headers[0][0])
 
 
-class MockI2C(object):
+class MockContext(Context):
+    # This mock includes an i2c facade because of how it came to be.
+    # It would be nice to remove that feature...
+    def write_bytes(self, data):
+        if len(data) == 1:
+            self.write8(data[0], 0)
+        else:
+            self.writeList(data[0], data[1:])
+
+    def read_bytes(self, num_bytes):
+        return self.readList(0, num_bytes)
+
+    def reset_radio(self):
+        self.__init__()
+
     # TODO split out the I2C mock from the Si4707 mock
     @staticmethod
     def getPiRevision():
@@ -231,6 +245,12 @@ class MockI2C(object):
     @staticmethod
     def getPiI2CBusNumber():
         return 2
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
 
     def __init__(self):
         self.bus = {

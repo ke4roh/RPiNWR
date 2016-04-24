@@ -23,7 +23,10 @@ setup(
     url='https://github.com/ke4roh/RPiNWR',
     license='GNU GPL v.3',
     packages=find_packages(exclude=('tests', 'docs')),
-    # install_requires=['zlib', 'base64', 'signal', 'logging'],
+    #3install_requires=['Adafruit_Python_GPIO'],
+    # dependency_links=[
+    #   'git+https://github.com/nioinnovation/Adafruit_Python_GPIO.git'
+    #],
     setup_requires=['pytest-runner'],
     tests_require=['pytest'],
     test_suite="tests",
