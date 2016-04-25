@@ -128,11 +128,11 @@ def average_message(messages):
     """
     Compute a weighted average of the bits of various messages supplied.
     :param messages: an array of tuples, each containing a string message and an array of confidence values.
-       All arrays need to be the same length.
+       The complete message is assumed to be as long as the longest message, and messages align at the start.
     :return: a tuple containing a single string corresponding to the most certain available data, and
              the combined confidence for each character (range 1-9)
     """
-    size = len(messages[0][0])
+    size = max([len(x[0]) for x in messages])
     bitstrue = [0] * 8 * size
     bitsfalse = [0] * 8 * size
     confidences = [0] * size

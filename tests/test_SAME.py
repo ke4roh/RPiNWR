@@ -90,3 +90,13 @@ class TestSAME(unittest.TestCase):
         for i in range(0, len(clear_message)):
             if clear_message[i] != msg[i]:
                 self.assertTrue(confidence[i] < 3, "%s != %s (%d)" % (clear_message[i], msg[i], confidence[i]))
+
+    def testDifferentLengths(self):
+        # Sometimes messages come in partial, like in this bad reception example
+        messages = [('-E\x00S-RWT', [2, 1, 2, 3, 2, 2, 1, 2]),
+                    ('-E\x00S-RWT-0\x007183+', [3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 3, 3, 2, 3, 2, 3]),
+                    ('-E\x00S-RWT-0\x007183+', [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3])]
+        (msg, confidence) = average_message(messages)
+        self.assertEquals('-EIS-RWT-017183+', msg)  # EIS is not valid, but I is the least bit-distant valid character
+        self.assertTrue(confidence[2] < 3)
+        self.assertTrue(confidence[10] < 3)
