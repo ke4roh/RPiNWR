@@ -120,8 +120,33 @@ __SAME_CHARS = [
     __NUMERIC, __NUMERIC, __NUMERIC, __NUMERIC, __NUMERIC, __NUMERIC, -7,
     '+', __NUMERIC, __NUMERIC, '0134', '05', '-',
     '0123', __NUMERIC, __NUMERIC, '012', __NUMERIC, '012345', __NUMERIC, '-',
-    __ALPHA, __ALPHA, __ALPHA, __ALPHA, '/', 'N', 'W', 'S'
+    __ALPHA, __ALPHA, __ALPHA, __ALPHA, '/', 'N', 'W', 'S', '-'
 ]
+
+
+def _word_distance(word, confidence, choice):
+    d = 0
+    for i in range(0, len(choice)):
+        if word[i] != choice[i]:
+            d += confidence[i]
+    return d
+
+
+def _reconcile_word(msg, confidences, start, choices):
+    end = start + len(choices[0])
+    word = msg[start:end]
+    confidence = confidences[start:end]
+    candidates = []
+    for c in choices:
+        candidates.append((_word_distance(word, confidence, c), c))
+    candidates.sort()
+    word = candidates[0][1]
+    if candidates[0][0] < candidates[1][0]:
+        confidences[start:end] = [max(confidences[start:end])] * (end - start)
+
+    l = list(msg)
+    l[start:end] = list(word)
+    return "".join(l), confidences
 
 
 def average_message(messages):
@@ -140,12 +165,15 @@ def average_message(messages):
 
     # First look through the messages and compute sums of confidence of bit values
     for (msg, confidence) in messages:
+        # Loop through the characters of the message
         for i in range(0, len(msg)):
-            for j in range(0, 8):
-                if (ord(msg[i]) >> j) & 1:
-                    bitstrue[(i << 3) + j] += 1 * confidence[i]
-                else:
-                    bitsfalse[(i << 3) + j] += 1 * confidence[i]
+            if ord(msg[i]):
+                # Loop through bits and apply confidence for true or false
+                for j in range(0, 8):
+                    if (ord(msg[i]) >> j) & 1:
+                        bitstrue[(i << 3) + j] += 1 * confidence[i]
+                    else:
+                        bitsfalse[(i << 3) + j] += 1 * confidence[i]
 
     # Then combine that information into a single aggregate message
     byte_pattern_index = 0
@@ -160,33 +188,41 @@ def average_message(messages):
         c = chr(c)
 
         # Check the character against the space of possible characters
-        pattern = __SAME_CHARS[byte_pattern_index]
-        multipath = None  # Where the pattern can repeat, multipath supports both routes
-        if type(pattern) is int:
-            multipath = pattern
-            pattern = __SAME_CHARS[byte_pattern_index + multipath] + __SAME_CHARS[
-                byte_pattern_index + 1]
-        if c not in pattern:
-            # That was ugly.  Now find the closest legitimate character
-            byte_confidence, c = _reconcile_character(bitstrue[i:i + 8], bitsfalse[i:i + 8], pattern)
-            byte_confidence <<= 3  # It will get shifted back in a moment
-        if not multipath:
-            byte_pattern_index += 1
+        if (len(__SAME_CHARS) <= byte_pattern_index):
+            confidences[i] = 0
         else:
-            if c in __SAME_CHARS[byte_pattern_index + 1]:
-                byte_pattern_index += 2
+            pattern = __SAME_CHARS[byte_pattern_index]
+            multipath = None  # Where the pattern can repeat, multipath supports both routes
+            if type(pattern) is int:
+                multipath = pattern
+                pattern = __SAME_CHARS[byte_pattern_index + multipath] + __SAME_CHARS[
+                    byte_pattern_index + 1]
+            if c not in pattern:
+                # That was ugly.  Now find the closest legitimate character
+                byte_confidence, c = _reconcile_character(bitstrue[i:i + 8], bitsfalse[i:i + 8], pattern)
+                byte_confidence <<= 3  # It will get shifted back in a moment
+            if not multipath:
+                byte_pattern_index += 1
             else:
-                byte_pattern_index += multipath + 1
+                if c in __SAME_CHARS[byte_pattern_index + 1]:
+                    byte_pattern_index += 2
+                else:
+                    byte_pattern_index += multipath + 1
 
-        avgmsg += c
-        confidences[i] = byte_confidence >> 3
+            avgmsg += c
+            confidences[i] = byte_confidence >> 3
 
-    # TODO consider a third level of resolving ambiguity from error by further limiting the possibilities based
-    #    on strings in each segment of the message.
-    return avgmsg, confidences
+    # Now break the message into its parts and clean up each one
+    if avgmsg[1:4] not in _ORIGINATOR_CODES:
+        avgmsg, confidences = _reconcile_word(avgmsg, confidences, 1, _ORIGINATOR_CODES)
+    if avgmsg[5:8] not in _EVENT_CODES:
+        avgmsg, confidences = _reconcile_word(avgmsg, confidences, 5, _ORIGINATOR_CODES)
+
+    # TODO add word reconciliation for FIPS codes and transmitters
+    return avgmsg, confidences[0:len(avgmsg)]
 
 # -WXR-TOR-039173-039051-139069+0030-1591829-KCLE/NWS
-SAME_PATTERN = re.compile('-(EAS|CIV|WXR|PEP)-([A-Z]{3})((?:-\\d{6})+)\\+(\\d{4})-(\\d{7})-([A-Z/]+)')
+SAME_PATTERN = re.compile('-(EAS|CIV|WXR|PEP)-([A-Z]{3})((?:-\\d{6})+)\\+(\\d{4})-(\\d{7})-([A-Z/]+)-?')
 
 class SAMEMessage(object):
     def __init__(self, same_message, confidence):
