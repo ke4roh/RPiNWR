@@ -379,7 +379,6 @@ class SameInterruptCheck(InterruptHandler):
                 try:
                     radio._fire_event(SAMEMessageReceivedEvent(SAME.SAMEMessage(*avg_message)))
                 except ValueError as e:
-                    # TODO throw a DirtySAMEMessage event
                     radio._fire_event(InvalidSAMEMessageReceivedEvent(messages))
 
         self.status = status = self.__get_status(radio, intack=self.intack, clearbuf=self.clearbuf)
@@ -389,9 +388,9 @@ class SameInterruptCheck(InterruptHandler):
                 if time.time() - radio.last_EOM > 5:  # Send EOM only once for 3 repetitions
                     radio.last_EOM = time.time()
                     radio._fire_event(EndOfMessage())
-            elif status["PREDET"]:
+            if status["PREDET"]:
                 radio.same_timeout = time.time() + 6
-            elif status["HDRRDY"]:
+            if status["HDRRDY"]:
                 msg = list(self.status["MESSAGE"])
                 conf = list(self.status["CONFIDENCE"])
                 msg_len = self.status["MSGLEN"]
@@ -424,6 +423,11 @@ class SameInterruptCheck(InterruptHandler):
             msg += "clearbuf "
         if self.intack:
             msg += "intack "
+
+        if self.status is not None:
+            msg += "len = %d " % self.status["MSGLEN"]
+            msg += "state = %d " % self.status["STATE"]
+            msg += "m=%s " % self.status["MESSAGE"]
         msg += "]"
         return msg
 
@@ -446,6 +450,24 @@ class SameInterruptCheck(InterruptHandler):
             "MESSAGE": data[6:14]
         }
 
+
+class GetAGCStatus(CommandRequiringPowerUp):
+    def __init__(self):
+        super(GetAGCStatus, self).__init__(mnemonic="WB_AGC_STATUS", value=0x57)
+
+    def do_command0(self, radio):
+        super(GetAGCStatus, self).do_command0(radio)
+        return radio.context.read_bytes(2)[1] != 0
+
+
+class SetAGCStatus(CommandRequiringPowerUp):
+    def __init__(self, enable):
+        super(SetAGCStatus, self).__init__(mnemonic="WB_AGC_OVERRIDE", value=0x58)
+        self.enable = enable
+
+    def do_command0(self, radio):
+        radio.context.write_bytes([self.value, self.enable & 1])
+        radio.wait_for_clear_to_send()
 
 class Callback(Command):
     """

@@ -56,8 +56,16 @@ class Si4707(object):
 
     def __enter__(self):
         try:
-            self.context.reset_radio()
-            self.wait_for_clear_to_send(timeout=5)
+            retries = 2
+            while retries >= 0:
+                retries -= 1
+                self.context.reset_radio()
+                try:
+                    self.wait_for_clear_to_send(timeout=5)
+                except IOError:
+                    if retries == 0:
+                        raise
+
             for t in [threading.Thread(target=self.__command_loop),
                       threading.Thread(target=self.__event_loop)]:
                 t.setDaemon(False)
@@ -377,6 +385,17 @@ class Si4707(object):
         self.mute(mute)
         return best
 
+    def getAGC(self):
+        self.do_command(GetAGCStatus()).get()
+
+    def setAGC(self, enabled):
+        """
+        Set automatic gain control according to the parameter.  AGC should only be used in
+        situations where the input RSSI is too high.
+        :param enabled: True to use AGC, False otherwise
+        """
+        self.do_command(SetAGCStatus(enabled)).get()
+
 
 class Future(object):
     """
@@ -433,10 +452,12 @@ class Context(object):
     def __init__(self):
         if type(self) is Context:
             raise NotImplemented()
+        self._logger = logging.getLogger(type(self).__name__)
 
     def reset_radio(self):
         """
-        At a minimum, this will happen first.  It may also happen later on.
+        At a minimum, this will happen first.  It may also happen later on.  If it is called a second time,
+        it needs to be able to start over by doing whatever shutdown might be implied, then the startup again.
         """
         raise NotImplemented()
 

@@ -110,6 +110,16 @@ class TestSi4707(unittest.TestCase):
                 radio.power_on({"frequency": 162.4})
                 self.assertEqual(63, radio.do_command(GetProperty("RX_VOLUME")).get())
 
+    def test_agc_control(self):
+        with MockContext() as context:
+            with Si4707(context) as radio:
+                radio.power_on({"frequency": 162.4})
+                self.assertTrue(radio.do_command(GetAGCStatus()).get())
+                radio.do_command(SetAGCStatus(False)).get()
+                self.assertFalse(radio.do_command(GetAGCStatus()).get())
+                radio.do_command(SetAGCStatus(True)).get()
+                self.assertTrue(radio.do_command(GetAGCStatus()).get())
+
     def test_rsq_interrupts(self):
         events = []
 
@@ -202,7 +212,7 @@ class TestSi4707(unittest.TestCase):
     def test_send_invalid_message(self):
         # This will hit the timeout.
         events = []
-        message = '-WWF-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS'
+        message = '-WWF-RWT-020103-020209-020091-020121-029047-029165'
 
         with MockContext() as context:
             with Si4707(context) as radio:
@@ -272,6 +282,7 @@ class MockContext(Context):
         self.same_confidence = [0] * 255
         self.same_lock = threading.Lock()
         self._logger = logging.getLogger(type(self).__name__)
+        self.agc = 1
 
     def reverseByteOrder(self, data):
         "Reverses the byte order of an int (16-bit) or long (32-bit) value"
@@ -399,6 +410,10 @@ class MockContext(Context):
                 if self.bus[reg][0]:
                     self.asq_stopped = 0
                     self.asq_started = 0
+        elif reg == 0x57:  # WB_AGC_STATUS
+            self.registers[0] = [128 | self.interrupts, self.agc ]
+        elif reg == 0x58:  # WB_AGC_OVERRIDE
+            self.agc = self.bus[reg][0]
         else:
             logging.error("Command not mocked 0x%02X" % reg)
             self.registers[0][0] = 192
