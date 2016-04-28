@@ -31,11 +31,18 @@ class AIWIBoardContext(Context):
 
     i2c = Adafruit_GPIO.I2C.get_i2c_device(0x11)
 
+    def __init__(self):
+        super(AIWIBoardContext, self).__init__()
+        self.gpio_started = False
+
     def reset_radio(self):
         """
         Reset the Si4707 chip
         """
         # Ref https://github.com/AIWIndustries/Pi_4707/blob/master/firmware/NWRSAME_v2.py
+        if self.gpio_started:
+            gpio.cleanup()
+        self.gpio_started = True
         gpio.setmode(gpio.BCM)  # Use board pin numbering
 
         gpio.setup(17, gpio.OUT)  # Setup the reset pin
@@ -93,7 +100,13 @@ class AIWIBoardContext(Context):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        gpio.cleanup()
+        try:
+            if self.gpio_started:
+                gpio.cleanup()
+                self.gpio_started = False
+        except RuntimeError:
+            self._logger.info("Cleanup trouble", exc_info=True)
+            pass  # Probably tried to do it twice
 
     def relay(self, num, on):
         if on:
