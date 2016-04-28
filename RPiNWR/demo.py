@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 __author__ = 'ke4roh'
 # Demo weather radio app based on Si4707
@@ -20,21 +21,35 @@ __author__ = 'ke4roh'
 import logging
 from RPiNWR.Si4707 import Si4707
 from RPiNWR.Si4707.events import *
-from RPiNWR.Si4707.commands import TuneFrequency
+from RPiNWR.Si4707.commands import TuneFrequency, ReceivedSignalQualityCheck
 from RPiNWR.AIWIBoardContext import AIWIBoardContext
 from threading import Timer
+import Adafruit_GPIO.I2C as i2c
 import time
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, filename="radio.log", format='%(asctime)-15s %(message)s')
+    def exclude_routine_status_checks(record):
+        return not (
+            (record.funcName == "write8" and record.msg == "Wrote 0x%02X to register 0x%02X" and record.args[
+                1] == 0x14) or
+            (record.funcName == "readList" and record.msg == "Read the following from register 0x%02X: %s" and
+             record.args[1][0] == 128))
+
+    logging.basicConfig(level=logging.DEBUG, filename="radio.log", format='%(asctime)-15s %(message)s')
+    logger = logging.getLogger()
+
+    # Since this is logging lots of things, best to not also log every time we check for status
+    i2cLogger = logging.getLogger('Adafruit_I2C.Device.Bus.{0}.Address.{1:#0X}' \
+                                  .format(i2c.get_default_bus(), 0x11))
+    i2cLogger.addFilter(exclude_routine_status_checks)
 
     def log_event(event):
-        if isinstance(event, SAMEEvent):
-            logging.info(str(event))
+        if True or isinstance(event, SAMEEvent):
+            logger.info(str(event))
 
     def log_tune(event):
         if type(event) is TuneFrequency:
-            logging.info("Tuned to %.3f  rssi=%d  snr=%d" % (event.frequency / 400.0, event.rssi, event.snr))
+            logger.info("Tuned to %.3f  rssi=%d  snr=%d" % (event.frequency / 400.0, event.rssi, event.snr))
 
     def unmute_for_message(event):
         if type(event) is SAMEMessageReceivedEvent:
@@ -48,16 +63,19 @@ if __name__ == '__main__':
                 radio.register_event_listener(log_event)
                 radio.register_event_listener(log_tune)
                 radio.register_event_listener(unmute_for_message)
-                radio.power_on()
+                radio.power_on()  # { "frequency": 162.4 })
+                radio.setAGC(False)  # Turn on AGC only if the signal is too strong (high RSSI)
                 radio.mute(False)
                 radio.set_volume(63)
                 Timer(15, radio.mute, [True]).start()  # Mute the radio after 15 seconds
                 while True:
+                    time.sleep(300)
+                    radio.do_command(ReceivedSignalQualityCheck()).get()
                     # Run these blinking commands through the command queue to see that it's still working
-                    radio.queue_callback(context.led, [True])
-                    time.sleep(.5)
-                    radio.queue_callback(context.led, [False])
-                    time.sleep(4.5)
+                    # radio.queue_callback(context.led, [True])
+                    # time.sleep(.5)
+                    # radio.queue_callback(context.led, [False])
+                    # time.sleep(4.5)
                     # The radio turns off when the with block exits
 
     except KeyboardInterrupt:
