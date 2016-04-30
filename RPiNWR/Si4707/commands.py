@@ -432,7 +432,7 @@ class SameInterruptCheck(InterruptHandler):
         return msg
 
     def __get_status(self, radio, readaddr=0, clearbuf=False, intack=False):
-        radio.context.write_bytes([self.value, clearbuf < 1 | intack, readaddr])
+        radio.context.write_bytes([self.value, (clearbuf & 1) << 1 | (intack & 1), readaddr])
         radio.wait_for_clear_to_send()
         data = radio.context.read_bytes(14)
         confidence = [0] * 8

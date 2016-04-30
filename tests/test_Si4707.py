@@ -189,6 +189,7 @@ class TestSi4707(unittest.TestCase):
             times = len(self.__filter_same_events(events, interrupt))
             self.assertEquals(3, times, "Interrupt %s happened %d times" % (interrupt, times))
         self.assertEquals(1, len(list(filter(lambda x: type(x) is EndOfMessage, events))))
+        self.assertEqual(0, sum(context.same_buffer), "Buffer wasn't flushed")
 
     def test_send_message_no_tone_2_headers(self):
         # This will hit the timeout.
