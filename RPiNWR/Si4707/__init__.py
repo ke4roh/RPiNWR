@@ -22,7 +22,7 @@ __author__ = 'ke4roh'
 # further processing of the data to, for example, decide what to do with a message.
 #
 # Ref http://www.silabs.com/Support%20Documents/TechnicalDocs/AN332.pdf
-#
+# http://web.archive.org/web/20160324082647/http://www.silabs.com/Support%20Documents/TechnicalDocs/AN332.pdf
 
 import queue
 import heapq
