@@ -35,7 +35,7 @@ if __name__ == '__main__':
             (record.funcName == "readList" and record.msg == "Read the following from register 0x%02X: %s" and
              record.args[1][0] == 128))
 
-    logging.basicConfig(level=logging.DEBUG, filename="radio.log", format='%(asctime)-15s %(message)s')
+    logging.basicConfig(level=logging.DEBUG, filename="radio.log", format='%(asctime)-15s %(levelname)-5s %(message)s')
     logger = logging.getLogger()
 
     # Since this is logging lots of things, best to not also log every time we check for status
