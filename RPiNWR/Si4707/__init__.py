@@ -50,8 +50,7 @@ class Si4707(object):
         self.__shutdown = False  # True once shutdown has commenced
         self.tone_start = None
         self._logger = logging.getLogger(type(self).__name__)
-        self.same_messages = []
-        self.same_timeout = float("inf")
+        self.same_message = None
         self.last_EOM = 0
 
     def __enter__(self):
@@ -90,10 +89,7 @@ class Si4707(object):
                     self.do_command(ReceivedSignalQualityCheck(True))
 
                 # Check for a SAME message to dispatch
-                if len(self.same_messages) >= 3 or (
-                                len(self.same_messages) > 0 and self.same_timeout <= time.time()):
-                    self._logger.debug("len(messages)=%d , time-timeout=%f" % (
-                        len(self.same_messages), time.time() - self.same_timeout))
+                if self.same_message and self.same_message.fully_received():
                     self.do_command(SameInterruptCheck(dispatch_message=True))
 
                 # Run any pending command

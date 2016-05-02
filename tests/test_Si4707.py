@@ -32,7 +32,7 @@ class TestSi4707(unittest.TestCase):
                 radio.register_event_listener(events.append)
                 result = radio.do_command(PowerUp(function=15)).get(timeout=1)
                 self.assertEqual("2.0", result.firmware)
-                time.sleep(.01) # The event will come later, after the command is done.
+                time.sleep(.01)  # The event will come later, after the command is done.
                 self.assertEqual(1, len(events))
 
     def test_patch_command(self):
@@ -174,9 +174,19 @@ class TestSi4707(unittest.TestCase):
     def test_send_message(self):
         events = []
         message = '-WXR-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS'
+        interrupts_cleared = [0]
 
         with MockContext() as context:
+            def check_interrupts_cleared(event):
+                try:
+                    if event.intack:
+                        self.assertEqual(0, context.interrupts)
+                        interrupts_cleared[0] += 1
+                except AttributeError:
+                    pass
+
             with Si4707(context) as radio:
+                radio.register_event_listener(check_interrupts_cleared)
                 radio.power_on({"frequency": 162.4})
                 radio.register_event_listener(events.append)
                 context.send_message(message=message, voice_duration=1, time_factor=0.1)
@@ -184,12 +194,13 @@ class TestSi4707(unittest.TestCase):
 
         same_messages = list(filter(lambda x: type(x) is SAMEMessageReceivedEvent, events))
         self.assertEquals(1, len(same_messages))
-        self.assertEquals(message, same_messages[0].message.raw_message)
+        self.assertEquals(message, same_messages[0].message.get_SAME_message()[0])
         for interrupt in ["EOMDET", "HDRRDY", "PREDET"]:
             times = len(self.__filter_same_events(events, interrupt))
             self.assertEquals(3, times, "Interrupt %s happened %d times" % (interrupt, times))
         self.assertEquals(1, len(list(filter(lambda x: type(x) is EndOfMessage, events))))
         self.assertEqual(0, sum(context.same_buffer), "Buffer wasn't flushed")
+        self.assertTrue(10 < interrupts_cleared[0] < 13, interrupts_cleared[0])
 
     def test_send_message_no_tone_2_headers(self):
         # This will hit the timeout.
@@ -205,7 +216,7 @@ class TestSi4707(unittest.TestCase):
 
         same_messages = list(filter(lambda x: type(x) is SAMEMessageReceivedEvent, events))
         self.assertEquals(1, len(same_messages))
-        self.assertEquals(message, same_messages[0].message.raw_message)
+        self.assertEquals(message, same_messages[0].message.get_SAME_message()[0])
         for interrupt in ["HDRRDY", "PREDET"]:
             times = len(self.__filter_same_events(events, interrupt))
             self.assertEquals(2, times, "Interrupt %s happened %d times" % (interrupt, times))
@@ -222,20 +233,18 @@ class TestSi4707(unittest.TestCase):
                 context.send_message(message=message, time_factor=0.1, tone=None, invalid_message=True)
                 self.__wait_for_eom_events(events)
 
-        same_messages = list(filter(lambda x: type(x) is InvalidSAMEMessageReceivedEvent, events))
+        same_messages = list(filter(lambda x: type(x) is SAMEMessageReceivedEvent, events))
         self.assertEquals(1, len(same_messages))
-        self.assertEquals(message, same_messages[0].headers[0][0])
+        self.assertEquals(message, same_messages[0].message.headers[0][0])
         for interrupt in ["HDRRDY", "PREDET"]:
             times = len(self.__filter_same_events(events, interrupt))
             self.assertEquals(3, times, "Interrupt %s happened %d times" % (interrupt, times))
-        ismre = list(filter(lambda x: type(x) is InvalidSAMEMessageReceivedEvent, events))
-        self.assertEquals(1, len(ismre))
-        self.assertEquals(message, ismre[0].headers[0][0])
 
 
 class MockContext(Context):
     # This mock includes an i2c facade because of how it came to be.
     # It would be nice to remove that feature...
+    # TODO split out the I2C mock, Context, and the Si4707 mock
     def write_bytes(self, data):
         if len(data) == 1:
             self.write8(data[0], 0)
@@ -248,7 +257,6 @@ class MockContext(Context):
     def reset_radio(self):
         self.__init__()
 
-    # TODO split out the I2C mock from the Si4707 mock
     @staticmethod
     def getPiRevision():
         return 2
@@ -412,7 +420,7 @@ class MockContext(Context):
                     self.asq_stopped = 0
                     self.asq_started = 0
         elif reg == 0x57:  # WB_AGC_STATUS
-            self.registers[0] = [128 | self.interrupts, self.agc ]
+            self.registers[0] = [128 | self.interrupts, self.agc]
         elif reg == 0x58:  # WB_AGC_OVERRIDE
             self.agc = self.bus[reg][0]
         else:

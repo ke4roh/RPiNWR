@@ -308,9 +308,9 @@ class InterruptHandler(CommandRequiringPowerUp):
 
 
 class ReceivedSignalQualityCheck(InterruptHandler):
-    def __init__(self, ack_rsq=False):
+    def __init__(self, intack=False):
         super(ReceivedSignalQualityCheck, self).__init__(mnemonic="WB_RSQ_STATUS", value=0x53)
-        self.ack_rsq = ack_rsq
+        self.intack = intack
         self.rssi = None
         self.asnr = None
         self.frequency_offset = None
@@ -322,7 +322,7 @@ class ReceivedSignalQualityCheck(InterruptHandler):
         self.rssi_low = None
 
     def do_command0(self, radio):
-        radio.context.write_bytes([self.value, self.ack_rsq & 1])
+        radio.context.write_bytes([self.value, self.intack & 1])
         radio.wait_for_clear_to_send()
         violation_flags, validity, self.rssi, self.asnr, self.frequency_offset = \
             struct.unpack(">xbbxbbxb", bytes(radio.context.read_bytes(8)))
@@ -336,16 +336,16 @@ class ReceivedSignalQualityCheck(InterruptHandler):
 
 
 class AlertToneCheck(InterruptHandler):
-    def __init__(self, int_ack=False):
+    def __init__(self, intack=False):
         super(AlertToneCheck, self).__init__(mnemonic="WB_ASQ_STATUS", value=0x55)
-        self.int_ack = int_ack
+        self.intack = intack
         self.tone_start = None
         self.tone_end = None
         self.tone_on = None
         self.duration = None
 
     def do_command0(self, radio):
-        radio.context.write_bytes([self.value, self.int_ack & 1])
+        radio.context.write_bytes([self.value, self.intack & 1])
         radio.wait_for_clear_to_send()
         history, present = \
             struct.unpack(">xbb", bytes(radio.context.read_bytes(3)))
@@ -370,27 +370,28 @@ class SameInterruptCheck(InterruptHandler):
         self.dispatch_message = dispatch_message
 
     def do_command0(self, radio):
-        if self.dispatch_message:
-            radio.same_timeout = float("inf")
-            if len(radio.same_messages) > 0:
-                messages = radio.same_messages
-                avg_message = SAME.average_message(messages)
-                radio.same_messages = []
-                try:
-                    radio._fire_event(SAMEMessageReceivedEvent(SAME.SAMEMessage(*avg_message)))
-                except ValueError as e:
-                    radio._fire_event(InvalidSAMEMessageReceivedEvent(messages))
+        if self.dispatch_message and radio.same_message:
+            message = radio.same_message
+            radio.same_message = None
+            message.fully_received(True)
+            if len(message.headers) > 0:
+                radio._fire_event(SAMEMessageReceivedEvent(message))
 
         self.status = status = self.__get_status(radio, intack=self.intack, clearbuf=self.clearbuf)
         if self.intack:
             if status["EOMDET"]:
-                radio.same_timeout = 0  # If there's a message to be had, it'll get processed shortly
+                if radio.same_message:
+                    radio.same_message.fully_received(True)
                 if time.time() - radio.last_EOM > 5:  # Send EOM only once for 3 repetitions
                     radio.last_EOM = time.time()
                     radio._fire_event(EndOfMessage())
             if status["PREDET"]:
-                radio.same_timeout = time.time() + 6
+                if not radio.same_message:
+                    radio.same_message=SAME.SAMEMessage()
+                radio.same_message.extend_timeout()
             if status["HDRRDY"]:
+                if not radio.same_message:
+                    radio.same_message=SAME.SAMEMessage()
                 msg = list(self.status["MESSAGE"])
                 conf = list(self.status["CONFIDENCE"])
                 msg_len = self.status["MSGLEN"]
@@ -400,10 +401,9 @@ class SameInterruptCheck(InterruptHandler):
                     conf.extend(st["CONFIDENCE"])
                 msg = msg[0:msg_len + 1]
                 conf = conf[0:msg_len + 1]
-                radio.same_messages.append(("".join([chr(c) for c in msg]), conf))
+                radio.same_message.add_header("".join([chr(c) for c in msg]), conf)
                 self.__get_status(radio, clearbuf=True)
-                radio._fire_event(SAMEHeaderReceived(radio.same_messages))
-                radio.same_timeout = time.time() + 6
+                radio._fire_event(SAMEHeaderReceived(radio.same_message))
 
     def __str__(self):
         msg = type(self).__name__ + " ["
@@ -468,6 +468,7 @@ class SetAGCStatus(CommandRequiringPowerUp):
     def do_command0(self, radio):
         radio.context.write_bytes([self.value, self.enable & 1])
         radio.wait_for_clear_to_send()
+
 
 class Callback(Command):
     """

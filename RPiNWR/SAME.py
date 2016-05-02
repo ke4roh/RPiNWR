@@ -152,7 +152,7 @@ def _reconcile_word(msg, confidences, start, choices):
 def average_message(messages):
     """
     Compute a weighted average of the bits of various messages supplied.
-    :param messages: an array of tuples, each containing a string message and an array of confidence values.
+    :param messages: an array of tuples, each containing a string message and an array (or string) of confidence values.
        The complete message is assumed to be as long as the longest message, and messages align at the start.
     :return: a tuple containing a single string corresponding to the most certain available data, and
              the combined confidence for each character (range 1-9)
@@ -164,7 +164,11 @@ def average_message(messages):
     avgmsg = ''
 
     # First look through the messages and compute sums of confidence of bit values
-    for (msg, confidence) in messages:
+    for (msg, c, when) in messages:
+        if type(c) is str:
+            confidence = [int(x) for x in c]
+        else:
+            confidence = c
         # Loop through the characters of the message
         for i in range(0, len(msg)):
             if ord(msg[i]):
@@ -224,32 +228,134 @@ def average_message(messages):
 # -WXR-TOR-039173-039051-139069+0030-1591829-KCLE/NWS
 SAME_PATTERN = re.compile('-(EAS|CIV|WXR|PEP)-([A-Z]{3})((?:-\\d{6})+)\\+(\\d{4})-(\\d{7})-([A-Z/]+)-?')
 
+
 class SAMEMessage(object):
-    def __init__(self, same_message, confidence):
+    """
+    A SAMEMessage represents a message from NWR.
+
+    Responsibilities:
+       - Collect the multiple headers
+       - Know when it is fully received (timeout, enough messages, or external signal)
+       - Aggregate headers
+       - Know the certainty for aggregated headers
+       - Know how to extract the information from the various fields of the SAME message
+       - Render itself in CAP and a dict
+    """
+
+    def __init__(self, headers=None):
         """
-        The SAME message is parsed here.
+        :param headers:  Headers for a legacy message to reconstitute, None if this is a new message
+        :return:
         """
-        self.received_time = time.time()
-        self.raw_message = same_message
-        self.confidence = confidence
-        m = SAME_PATTERN.match(same_message)
-        if not m:
-            raise ValueError("Message \"%s\" does not match the pattern." % same_message)
-        (self.originator, self.event_type, geography, self.purge_time, self.issue_time, self.broadcaster) = m.group(
-            *range(1, 7))
-        self.geography = geography.split("-")[1:]
-        now = time.gmtime(time.time())
+        if headers:
+            self.headers = headers
+            self.start_time = headers[0][2]
+        else:
+            self.headers = []
+            self.start_time = time.time()
+        self.timeout = self.start_time + 6
+        self.__avg_message = None
+        pass
+
+    def add_header(self, header, confidence):
+        if self.fully_received():
+            raise ValueError("Message is already complete.")
+        when = time.time()
+        try:
+            confidence[0] + 'a'
+        except TypeError:
+            confidence = "".join([str(x) for x in confidence])
+        self.headers.append((_unicodify(header), confidence, when))
+        self.timeout = when + 6
+
+    def fully_received(self, make_it_so=False):
+        if make_it_so:
+            self.timeout = float("-inf")
+        return len(self.headers) >= 3 or self.timeout < time.time()
+
+    def extend_timeout(self):
+        if self.fully_received():
+            raise ValueError("Message is already complete.")
+        self.timeout = time.time() + 6
+
+    def get_SAME_message(self):
+        if self.fully_received():
+            if self.__avg_message is None:
+                self.__avg_message = average_message(self.headers)
+            return self.__avg_message
+        else:
+            if len(self.headers) > 0:
+                return average_message(self.headers)
+            else:
+                return "", []
+
+    def get_originator(self):
+        return self.get_SAME_message()[0][1:4]
+
+    def get_message_type(self):
+        return self.get_SAME_message()[0][5:8]
+
+    def get_counties(self):
+        m = self.get_SAME_message()[0]
+        return m[9:m.find('+')].split("-")
+
+    def get_duration_str(self):
+        m = self.get_SAME_message()[0]
+        start = m.find('+') + 1
+        return m[start:start + 4]
+
+    def get_start_time_str(self):
+        m = self.get_SAME_message()[0]
+        start = m.find('+') + 6
+        return m[start:start + 7]
+
+    def get_duration_sec(self):
+        d_str = self.get_duration_str()
+        return int(d_str[0:2]) * 60 * 60 + int(d_str[2:4]) * 60
+
+    def get_start_time_sec(self):
+        now = time.gmtime(self.start_time)
         year = now.tm_year
         issue_jday = int(self.issue_time[0:3])
         if now.tm_yday < 10 and issue_jday > 355:
             year -= 1
         elif now.tm_yday > 355 and issue_jday < 10:
             year += 1
-        self.effective_time = time.mktime(time.strptime(str(year) + self.issue_time + 'UTC', '%Y%j%H%M%Z'))
-        self.exipry_time = self.effective_time + int(self.purge_time[0:2]) * 60 * 60 + int(self.purge_time[2:4]) * 60
+        return time.mktime(time.strptime(str(year) + self.get_start_time_sec() + 'UTC', '%Y%j%H%M%Z'))
+
+    def get_broadcaster(self):
+        m = self.get_SAME_message()[0]
+        start = m.find('+') + 14
+        return m[start:-1]
 
     def __str__(self):
-        return \
-            "SAMEMessage: { Originator: %s  Type: %s  Places: %s  issueTime: %s  purgeTime: %s  broadcaster: %s }" % \
-            (self.originator, self.event_type, ", ".join(self.geography), self.issue_time, self.purge_time,
-             self.broadcaster)
+        return "SAMEMessage: { %s }" % self.get_SAME_message()[0]
+
+    def to_dict(self):
+        return {
+            "message": self.get_SAME_message()[0],
+            'confidence': self.get_SAME_message()[1],
+            'headers': self.headers,
+            "time": self.start_time
+        }
+
+
+def _asciify(str):
+    # Reverse the process from _unicodify
+    return "".join([chr(ord(x) & 0xFF) for x in list(str)])
+
+
+def _unicodify(str):
+    # Put all the special ASCII characters into some readable place on the unicode character set
+    # All of these transformations are chosen so that ord(c) & 0xFF is the ASCII character represented
+    str = list(str)
+    for i in range(0, len(str)):
+        c = str[i]
+        if ord(c) == 0:
+            c = "⨀"
+        elif ord(c) <= 0x1F:  # put these in the Unicode Control Pictures block
+            c = chr(ord(c) | 0x2400)
+        elif ord(c) > 126:  # grab some unicode symbols
+            c = chr((ord(c) & 0xFF) | 0x1E00)
+        str[i] = c
+    return "".join(str)
