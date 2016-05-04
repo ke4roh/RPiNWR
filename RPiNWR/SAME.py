@@ -290,7 +290,7 @@ class SAMEMessage(object):
                     level = logging.CRITICAL
                 else:
                     level = logging.INFO
-                logging.getLogger("same.message.%s.%s" % (self.get_originator(), mtype)).log(level, self)
+                logging.getLogger("same.message.%s.%s" % (self.get_originator(), mtype)).log(level, "%s", self)
             return self.__avg_message
         else:
             if len(self.headers) > 0:

@@ -105,18 +105,9 @@ class MockContext(Context):
             data >>= 8
         return val
 
-    def errMsg(self):
-        raise NotImplemented()
-
     def write8(self, reg, value):
         self.bus[value][0] = reg
         self.__op(reg)
-
-    def write16(self, reg, value):
-        raise NotImplemented()
-
-    def writeRaw8(self, value):
-        raise NotImplemented()
 
     def writeList(self, reg, l):
         if type(l) is not list or len(l) < 1 or len(l) > 32:
@@ -129,18 +120,6 @@ class MockContext(Context):
         while len(self.registers[reg]) < min(32, length):
             self.registers[reg].append(0)
         return self.registers[reg][0:length]
-
-    def readU8(self, reg):
-        raise NotImplemented()
-
-    def readS8(self, reg):
-        raise NotImplemented()
-
-    def readU16(self, reg, little_endian=True):
-        raise NotImplemented()
-
-    def readS16(self, reg, little_endian=True):
-        raise NotImplemented()
 
     def __op(self, reg):
         if reg == 0x01:  # Power up

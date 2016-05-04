@@ -46,12 +46,6 @@ class SAMEMessageReceivedEvent(SAMEEvent):
         self.message = same_message
 
 
-class InvalidSAMEMessageReceivedEvent(SAMEEvent):
-    def __init__(self, headers):
-        super(InvalidSAMEMessageReceivedEvent, self).__init__()
-        self.headers = headers
-
-
 class SAMEHeaderReceived(SAMEEvent):
     def __init__(self, headers):
         super(SAMEHeaderReceived, self).__init__()
@@ -60,16 +54,6 @@ class SAMEHeaderReceived(SAMEEvent):
 
 class EndOfMessage(SAMEEvent):
     pass
-
-
-class EventProcessingExceptionEvent(Si4707Event):
-    """
-    There was a problem executing commands
-    """
-
-    def __init__(self, exception):
-        super(EventProcessingExceptionEvent, self).__init__()
-        self.exception = exception
 
 
 class NotClearToSend(Exception):
@@ -94,4 +78,3 @@ class ReadyToTuneEvent(Si4707Event):
     Sent after power-up when the oscillator has had time to stabilize
     """
     pass
-

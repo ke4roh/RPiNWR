@@ -134,7 +134,10 @@ class Si4707(object):
     def __event_loop(self):
         def dispatch_event(event):
             for listener in self.__event_listeners:
-                listener(event)
+                try:
+                    listener(event)
+                except Exception as e:
+                    self._logger.exception("Event processing")
 
         def get_delayed_events():
             """
@@ -158,9 +161,6 @@ class Si4707(object):
                 self.__event_queue.task_done()
             except queue.Empty:
                 pass
-            except Exception as e:
-                self._logger.exception("Event processing")
-                self._fire_event(EventProcessingExceptionEvent(e))
         self.__event_queue = None
 
     def _delay_event(self, event, when):
