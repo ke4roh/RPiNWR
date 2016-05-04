@@ -4,6 +4,10 @@ This library adapts the [Raspberry Pi SAME decoder board](http://www.aiwindustri
 functionality so that you can focus on your application.  It has
 error handling!  It has unit tests!  It has events!  Callbacks!
 
+## Build status
+[![build status](https://travis-ci.org/ke4roh/RPiNWR.svg?branch=master)](https://travis-ci.org/ke4roh/RPiNWR/branches)
+[![Coverage Status](https://coveralls.io/repos/github/ke4roh/RPiNWR/badge.svg?branch=master)](https://coveralls.io/github/ke4roh/RPiNWR?branch=master)
+
 ## Install
 Get GPIO working:
 
