@@ -128,7 +128,11 @@ class TestSi4707(unittest.TestCase):
                 radio.power_on({"frequency": 162.4})
                 radio.register_event_listener(events.append)
                 context.interrupts |= 8  # RSQ
-                time.sleep(.05)
+                timeout = time.time() + 5
+                while not len(list(filter(lambda x: type(x) is ReceivedSignalQualityCheck, events))):
+                    time.sleep(.1)
+                    self.assertTrue(time.time()<timeout)
+
         rsqe = list(filter(lambda x: type(x) is ReceivedSignalQualityCheck, events))
         self.assertEqual(1, len(rsqe))
         self.assertEqual(1, rsqe[0].frequency_offset)
