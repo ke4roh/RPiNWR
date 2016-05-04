@@ -287,15 +287,15 @@ class TuneFrequency(CommandRequiringPowerUp):
 
 
 class TuneStatus(CommandRequiringPowerUp):
-    def __init__(self, ack_stc=False):
+    def __init__(self, intack=False):
         super(TuneStatus, self).__init__(mnemonic="WB_TUNE_STATUS", value=0x52)
-        self.ack_stc = ack_stc
+        self.intack = intack
         self.frequency = None
         self.rssi = None
         self.snr = None
 
     def do_command0(self, radio):
-        radio.context.write_bytes([self.value, self.ack_stc & 1])  # Acknowledge STC, get tune status
+        radio.context.write_bytes([self.value, self.intack & 1])  # Acknowledge STC, get tune status
         radio.wait_for_clear_to_send()
         bl = radio.context.read_bytes(6)
         self.frequency, self.rssi, self.snr = struct.unpack(">xxHbb", bytes(bl))

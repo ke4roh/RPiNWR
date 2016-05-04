@@ -33,13 +33,18 @@ if __name__ == '__main__':
             (record.funcName == "write8" and record.msg == "Wrote 0x%02X to register 0x%02X" and record.args[
                 1] == 0x14) or
             (record.funcName == "readList" and record.msg == "Read the following from register 0x%02X: %s" and
-             record.args[1][0] == 128))
+             record.args[1][0] == 128 and len(record.args[1]) == 1))
 
     logging.basicConfig(level=logging.DEBUG, filename="radio.log", format='%(asctime)-15s %(levelname)-5s %(message)s')
     logger = logging.getLogger()
 
+    message_logger = logging.getLogger("same.messages")
+    message_logger.addHandler(logging.FileHandler("messages.log", encoding='utf-8'))
+    message_logger.setFormatter(logging.Formatter(datefmt=""))
+    message_logger.setLevel(logging.INFO)  # INFO=watches, WARN=warnings, CRIT=emergencies
+
     # Since this is logging lots of things, best to not also log every time we check for status
-    i2cLogger = logging.getLogger('Adafruit_I2C.Device.Bus.{0}.Address.{1:#0X}' \
+    i2cLogger = logging.getLogger('Adafruit_I2C.Device.Bus.{0}.Address.{1:#0X}'
                                   .format(i2c.get_default_bus(), 0x11))
     i2cLogger.addFilter(exclude_routine_status_checks)
 

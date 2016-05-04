@@ -19,6 +19,7 @@ __author__ = 'ke4roh'
 
 import re
 import time
+import logging
 
 _ORIGINATORS = [
     ("Broadcast station or cable system", "EAS"),
@@ -282,6 +283,14 @@ class SAMEMessage(object):
         if self.fully_received():
             if self.__avg_message is None:
                 self.__avg_message = average_message(self.headers)
+                mtype = self.get_message_type()
+                if mtype == "TOR" or mtype == "SVR" or mtype[2] == "W":
+                    level = logging.WARN
+                elif mtype == "EVI" or mtype[2] == "E":
+                    level = logging.CRITICAL
+                else:
+                    level = logging.INFO
+                logging.getLogger("same.message.%s.%s" % (self.get_originator(), mtype)).log(level, self)
             return self.__avg_message
         else:
             if len(self.headers) > 0:
@@ -329,7 +338,9 @@ class SAMEMessage(object):
         return m[start:-1]
 
     def __str__(self):
-        return "SAMEMessage: { %s }" % self.get_SAME_message()[0]
+        msg = self.get_SAME_message()
+        return 'SAMEMessage: { "message":"%s", "confidence":"%s" }' % (
+            _unicodify(msg[0]), "".join([str(x) for x in msg[1]]))
 
     def to_dict(self):
         return {
