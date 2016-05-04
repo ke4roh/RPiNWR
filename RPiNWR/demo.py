@@ -39,8 +39,9 @@ if __name__ == '__main__':
     logger = logging.getLogger()
 
     message_logger = logging.getLogger("same.messages")
-    message_logger.addHandler(logging.FileHandler("messages.log", encoding='utf-8'))
-    message_logger.setFormatter(logging.Formatter(datefmt=""))
+    message_log_handler = logging.FileHandler("messages.log", encoding='utf-8')
+    message_logger.addHandler(message_log_handler)
+    message_log_handler.setFormatter(logging.Formatter(datefmt=""))
     message_logger.setLevel(logging.INFO)  # INFO=watches, WARN=warnings, CRIT=emergencies
 
     # Since this is logging lots of things, best to not also log every time we check for status
