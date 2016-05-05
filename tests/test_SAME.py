@@ -22,8 +22,6 @@ import random
 import unittest
 from RPiNWR.SAME import *
 import logging
-import calendar
-
 
 class TestSAME(unittest.TestCase):
     @staticmethod

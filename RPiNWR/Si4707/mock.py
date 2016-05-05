@@ -25,6 +25,7 @@ from RPiNWR.SAME import SAME_PATTERN
 import struct
 import logging
 import re
+import random
 
 
 class MockContext(Context):
@@ -293,6 +294,19 @@ class MockContext(Context):
                     if sleep_for > 0:
                         time.sleep(sleep_for)
 
+                # There are frequently nulls and noise on the end of the buffer.  This simulates that condition.
+                with self.same_lock:
+                    for i in range(len(message), len(message) + 3):
+                        self.same_buffer[i] = 0
+                        self.same_confidence[i] = 0
+                        self.same_status[3] = max(i, self.same_status[3])
+                        self.same_status[2] = 2  # receiving SAME header
+                    for i in range(len(message) + 3, len(message) + 6):
+                        self.same_buffer[i] = random.randint(0, 255)
+                        self.same_confidence[i] = 0
+                        self.same_status[3] = max(i, self.same_status[3])
+                        self.same_status[2] = 2  # receiving SAME header
+
                 with self.same_lock:
                     self.same_status[2] = 3  # SAME header message complete
                     self.same_status[1] |= 1  # HDRRDY
@@ -320,8 +334,7 @@ class MockContext(Context):
 
     @staticmethod
     def _parse_cmd(cmd, regex, func):
-        re.compile(regex)
-        m = re.match(cmd)
+        m = re.match(regex, cmd)
         if m:
             func(*m.groups())
             return True
@@ -370,7 +383,7 @@ class MockContext(Context):
             self.interrupts |= 8
             self.afc_valid ^= 1
 
-    def run_script(self, script):
+    def run_script(self, *script):
         """
         Control the mock of the radio for simulating receipt of messages etc..
 
@@ -382,7 +395,9 @@ class MockContext(Context):
                     MockContext._parse_cmd(line, "send (-[^ ]*)",
                                            lambda msg: self.send_message(message=msg, tone=0, voice_duration=1)) or \
                     MockContext._parse_cmd(line, "alert (-[^ ]*)",
-                                           lambda msg: self.send_message(message=msg, voice_duration=1)):
+                                           lambda msg: self.send_message(message=msg, voice_duration=1)) or \
+                    MockContext._parse_cmd(line, "rsq(?: rssi=(\d+))?(?: snr=(\d+))?(?: freqoff=(\d+))?",
+                                           self.set_signal_quality):
                 pass
             else:
                 raise ValueError("Unknown command %s" % line)

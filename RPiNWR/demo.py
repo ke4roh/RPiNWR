@@ -22,12 +22,61 @@ import logging
 from RPiNWR.Si4707 import Si4707
 from RPiNWR.Si4707.events import *
 from RPiNWR.Si4707.commands import TuneFrequency, ReceivedSignalQualityCheck
-from RPiNWR.AIWIBoardContext import AIWIBoardContext
 from threading import Timer
-import Adafruit_GPIO.I2C as i2c
 import time
+import argparse
+import importlib
 
-if __name__ == '__main__':
+_CONTEXTS = ["RPiNWR.Si4707.mock.MockContext"]
+try:
+    from RPiNWR.AIWIBoardContext import AIWIBoardContext
+
+    _CONTEXTS.append("RPiNWR.AIWIBoardContext.AIWIBoardContext")
+except ImportError:
+    pass  # It's not a valid choice in this environment
+_DEFAULT_CONTEXT = _CONTEXTS[-1]
+
+
+class Radio(object):
+    def __init__(self, args=None):
+        self.radio = None
+        self.context = None
+        self.ready = False
+        self.logger = logging.getLogger("RPiNWR")
+        clparser = argparse.ArgumentParser()
+        clparser.add_argument("--off-after", default=None)
+        clparser.add_argument("--hardware-context", default=_DEFAULT_CONTEXT, type=Radio._lookup_type)
+        clparser.add_argument("--mute-after", default=15, type=float)
+        self.args = clparser.parse_args(args)
+        self._configure_logging()
+
+    @staticmethod
+    def _lookup_type(type_name):
+        module_name, class_name = type_name.rsplit(".", 1)
+        return getattr(importlib.import_module(module_name), class_name)
+
+    def _configure_logging(self):
+        logging.basicConfig(level=logging.DEBUG, filename="radio.log",
+                            format='%(asctime)-15s %(levelname)-5s %(message)s')
+
+        message_logger = logging.getLogger("RPiNWR.same.messages")
+        message_log_handler = logging.FileHandler("messages.log", encoding='utf-8')
+        message_logger.addHandler(message_log_handler)
+        message_log_handler.setFormatter(logging.Formatter(datefmt=""))
+        message_logger.setLevel(logging.INFO)  # INFO=watches, WARN=warnings, CRIT=emergencies
+
+        # Since this is logging lots of things, best to not also log every time we check for status
+        try:
+            import Adafruit_GPIO.I2C as i2c
+
+            i2cLogger = logging.getLogger('Adafruit_I2C.Device.Bus.{0}.Address.{1:#0X}'
+                                          .format(i2c.get_default_bus(), 0x11))
+        except ImportError:
+            i2cLogger = logging.getLogger(
+                'Adafruit_I2C.Device.Bus')  # a little less specific, but probably just as good
+        i2cLogger.addFilter(Radio.exclude_routine_status_checks)
+
+    @staticmethod
     def exclude_routine_status_checks(record):
         return not (
             (record.funcName == "write8" and record.msg == "Wrote 0x%02X to register 0x%02X" and record.args[
@@ -35,54 +84,71 @@ if __name__ == '__main__':
             (record.funcName == "readList" and record.msg == "Read the following from register 0x%02X: %s" and
              record.args[1][0] == 128 and len(record.args[1]) == 1))
 
-    logging.basicConfig(level=logging.DEBUG, filename="radio.log", format='%(asctime)-15s %(levelname)-5s %(message)s')
-    logger = logging.getLogger()
-
-    message_logger = logging.getLogger("same.messages")
-    message_log_handler = logging.FileHandler("messages.log", encoding='utf-8')
-    message_logger.addHandler(message_log_handler)
-    message_log_handler.setFormatter(logging.Formatter(datefmt=""))
-    message_logger.setLevel(logging.INFO)  # INFO=watches, WARN=warnings, CRIT=emergencies
-
-    # Since this is logging lots of things, best to not also log every time we check for status
-    i2cLogger = logging.getLogger('Adafruit_I2C.Device.Bus.{0}.Address.{1:#0X}'
-                                  .format(i2c.get_default_bus(), 0x11))
-    i2cLogger.addFilter(exclude_routine_status_checks)
-
-    def log_event(event):
+    def log_event(self, event):
         if True or isinstance(event, SAMEEvent):
-            logger.info(str(event))
+            self.logger.info(str(event))
 
-    def log_tune(event):
+    def log_tune(self, event):
         if type(event) is TuneFrequency:
-            logger.info("Tuned to %.3f  rssi=%d  snr=%d" % (event.frequency / 400.0, event.rssi, event.snr))
+            self.logger.info(
+                "Tuned to %.3f  rssi=%d  snr=%d" % (event.frequency / 400.0, event.rssi, event.snr))
 
-    def unmute_for_message(event):
+    def unmute_for_message(self, event):
         if type(event) is SAMEMessageReceivedEvent:
-            radio.mute(False)
+            self.radio.mute(False)
         if type(event) is EndOfMessage:
-            radio.mute(True)
+            self.radio.mute(True)
 
-    try:
-        with AIWIBoardContext() as context:
-            with Si4707(context) as radio:
-                radio.register_event_listener(log_event)
-                radio.register_event_listener(log_tune)
-                radio.register_event_listener(unmute_for_message)
-                radio.power_on()  # { "frequency": 162.4 })
-                radio.setAGC(False)  # Turn on AGC only if the signal is too strong (high RSSI)
-                radio.mute(False)
-                radio.set_volume(63)
-                Timer(15, radio.mute, [True]).start()  # Mute the radio after 15 seconds
-                while True:
-                    time.sleep(300)
-                    radio.do_command(ReceivedSignalQualityCheck()).get()
-                    # Run these blinking commands through the command queue to see that it's still working
-                    # radio.queue_callback(context.led, [True])
-                    # time.sleep(.5)
-                    # radio.queue_callback(context.led, [False])
-                    # time.sleep(4.5)
-                    # The radio turns off when the with block exits
+    def _contextFactory(self):
+        return self.args.hardware_context()
 
-    except KeyboardInterrupt:
-        pass  # suppress the stack trace
+    def run(self):
+        """
+        :return: when the radio stops, and not before
+        """
+        try:
+            with self._contextFactory() as context:
+                self.context = context
+                with Si4707(context) as radio:
+                    self.radio = radio
+                    radio.register_event_listener(self.log_event)
+                    radio.register_event_listener(self.log_tune)
+                    radio.register_event_listener(self.unmute_for_message)
+                    radio.power_on()  # { "frequency": 162.4 })
+                    radio.setAGC(False)  # Turn on AGC only if the signal is too strong (high RSSI)
+                    radio.mute(False)
+                    radio.set_volume(63)
+                    if self.args.off_after:
+                        Timer(self.args.off_after, radio.power_off).start()
+                    if self.args.mute_after >= 0:
+                        Timer(self.args.mute_after, radio.mute, [True]).start()  # Mute the radio after 15 seconds
+                    self.ready = True
+                    next_rsq_check = 0
+                    while not radio.stop:
+                        if time.time() > next_rsq_check:
+                            if radio.radio_power:
+                                radio.do_command(ReceivedSignalQualityCheck()).get()
+                            next_rsq_check = time.time() + 300
+                        time.sleep(.1)
+                        # Run these blinking commands through the command queue to see that it's still working
+                        # radio.queue_callback(context.led, [True])
+                        # time.sleep(.5)
+                        # radio.queue_callback(context.led, [False])
+                        # time.sleep(4.5)
+                        # The radio turns off when the with block exits
+                    self.ready = False
+
+        except KeyboardInterrupt:
+            pass  # suppress the stack trace
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.ready = False
+        if self.radio:
+            self.radio.shutdown()
+
+if __name__ == '__main__':
+    with Radio() as r:
+        r.run()

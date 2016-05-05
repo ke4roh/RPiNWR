@@ -131,7 +131,7 @@ class TestSi4707(unittest.TestCase):
                 timeout = time.time() + 5
                 while not len(list(filter(lambda x: type(x) is ReceivedSignalQualityCheck, events))):
                     time.sleep(.1)
-                    self.assertTrue(time.time()<timeout)
+                    self.assertTrue(time.time() < timeout)
 
         rsqe = list(filter(lambda x: type(x) is ReceivedSignalQualityCheck, events))
         self.assertEqual(1, len(rsqe))
@@ -177,7 +177,7 @@ class TestSi4707(unittest.TestCase):
 
     def test_send_message(self):
         events = []
-        message = '-WXR-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS'
+        message = '-WXR-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS-'
         interrupts_cleared = [0]
 
         with MockContext() as context:
@@ -209,7 +209,7 @@ class TestSi4707(unittest.TestCase):
     def test_send_message_no_tone_2_headers(self):
         # This will hit the timeout.
         events = []
-        message = '-WXR-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS'
+        message = '-WXR-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS-'
 
         with MockContext() as context:
             with Si4707(context) as radio:
@@ -239,10 +239,12 @@ class TestSi4707(unittest.TestCase):
 
         same_messages = list(filter(lambda x: type(x) is SAMEMessageReceivedEvent, events))
         self.assertEquals(1, len(same_messages))
-        self.assertEquals(message, same_messages[0].message.headers[0][0])
+        self.assertTrue(same_messages[0].message.headers[0][0].startswith(message),
+                        "%s != %s " % (message, same_messages[0].message.headers[0][0]))
         for interrupt in ["HDRRDY", "PREDET"]:
             times = len(self.__filter_same_events(events, interrupt))
             self.assertEquals(3, times, "Interrupt %s happened %d times" % (interrupt, times))
+
 
 if __name__ == '__main__':
     unittest.main()

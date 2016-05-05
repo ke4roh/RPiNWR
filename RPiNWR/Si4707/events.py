@@ -47,9 +47,13 @@ class SAMEMessageReceivedEvent(SAMEEvent):
 
 
 class SAMEHeaderReceived(SAMEEvent):
-    def __init__(self, headers):
+    def __init__(self, message):
         super(SAMEHeaderReceived, self).__init__()
-        self.headers = headers
+        self.message = message
+        self.header = message.headers[-1]
+
+    def __str__(self):
+        return "SAMEHeaderReceived: %s" % str(self.header)
 
 
 class EndOfMessage(SAMEEvent):
