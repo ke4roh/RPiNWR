@@ -66,7 +66,7 @@ class AIWIBoardContext(Context):
         gpio.setup(16, gpio.OUT)
         gpio.output(16, gpio.HIGH)
 
-        sleep(1)
+        sleep(1.5)
 
     def write_bytes(self, data):
         # TODO make this accept bytes(...)
