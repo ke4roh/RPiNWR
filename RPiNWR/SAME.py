@@ -285,9 +285,9 @@ class SAMEMessage(object):
                 self.__avg_message = average_message(self.headers)
                 mtype = self.get_message_type()
                 if mtype == "TOR" or mtype == "SVR" or mtype[2] == "W":
-                    level = logging.WARN
-                elif mtype == "EVI" or mtype[2] == "E":
                     level = logging.CRITICAL
+                elif mtype == "EVI" or mtype[2] == "E":
+                    level = logging.WARNING  # Emergencies are not immediate threats
                 else:
                     level = logging.INFO
                 logging.getLogger("RPiNWR.same.message.%s.%s" % (self.get_originator(), mtype)).log(level, "%s", self)
