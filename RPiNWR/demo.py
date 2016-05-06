@@ -58,6 +58,15 @@ class Radio(object):
     def _configure_logging(self):
         logging.basicConfig(level=logging.DEBUG, filename="radio.log",
                             format='%(asctime)-15s %(levelname)-5s %(message)s')
+        # TODO put log configuration in a (yaml) config file
+
+        # The basic config doesn't hold through tests
+        radio_logger = logging.getLogger("RPiNWR")
+        radio_logger.setLevel(logging.DEBUG)
+        radio_log_handler = logging.FileHandler("radio.log", encoding='utf-8')
+        radio_log_handler.setFormatter(logging.Formatter(fmt='%(asctime)-15s %(levelname)-5s %(message)s', datefmt=""))
+        radio_log_handler.setLevel(logging.DEBUG)
+        radio_logger.addHandler(radio_log_handler)
 
         message_logger = logging.getLogger("RPiNWR.same.message")
         message_logger.setLevel(logging.INFO)
