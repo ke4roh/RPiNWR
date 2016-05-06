@@ -120,6 +120,11 @@ class TestSi4707(unittest.TestCase):
                 radio.do_command(SetAGCStatus(True)).get()
                 self.assertTrue(radio.do_command(GetAGCStatus()).get())
 
+    def test_Tune_162_450(self):
+        # Check for a rounding error
+        c = TuneFrequency(162.450)
+        self.assertEqual(64980, c.frequency)
+
     def test_rsq_interrupts(self):
         events = []
 

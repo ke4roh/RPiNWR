@@ -263,7 +263,7 @@ class TuneFrequency(CommandRequiringPowerUp):
         super(TuneFrequency, self).__init__(mnemonic="WB_TUNE_FREQ", value=0x50)
         if not 162.4 <= frequency <= 162.55:
             raise ValueError("%.2f MHz out of range" % frequency)
-        self.frequency = int(400 * frequency)
+        self.frequency = int(400 * frequency + 0.5)
         self.rssi = None
         self.snr = None
 
