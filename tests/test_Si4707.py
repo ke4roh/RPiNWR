@@ -180,6 +180,7 @@ class TestSi4707(unittest.TestCase):
         while len(self.__filter_same_events(events, "EOMDET")) < n and not time.time() >= timeout:
             time.sleep(.02)
 
+    # TODO test sending 2 messages to make sure the turnaround is clean.
     def test_send_message(self):
         events = []
         message = '-WXR-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS-'
@@ -196,7 +197,7 @@ class TestSi4707(unittest.TestCase):
 
             with Si4707(context) as radio:
                 radio.register_event_listener(check_interrupts_cleared)
-                radio.power_on({"frequency": 162.4})
+                radio.power_on({"transmitter": "KID77"})
                 radio.register_event_listener(events.append)
                 context.send_message(message=message, voice_duration=1, time_factor=0.1)
                 self.__wait_for_eom_events(events)

@@ -47,6 +47,7 @@ class Radio(object):
         clparser.add_argument("--off-after", default=None)
         clparser.add_argument("--hardware-context", default=_DEFAULT_CONTEXT, type=Radio._lookup_type)
         clparser.add_argument("--mute-after", default=15, type=float)
+        clparser.add_argument("--transmitter", default=None)
         self.args = clparser.parse_args(args)
         self._configure_logging()
 
@@ -56,7 +57,7 @@ class Radio(object):
         return getattr(importlib.import_module(module_name), class_name)
 
     def _configure_logging(self):
-        logging.basicConfig(level=logging.DEBUG, filename="radio.log",
+        logging.basicConfig(level=logging.WARNING,
                             format='%(asctime)-15s %(levelname)-5s %(message)s')
         # TODO put log configuration in a (yaml) config file
 
@@ -124,7 +125,7 @@ class Radio(object):
                     radio.register_event_listener(self.log_event)
                     radio.register_event_listener(self.log_tune)
                     radio.register_event_listener(self.unmute_for_message)
-                    radio.power_on()  # { "frequency": 162.4 })
+                    radio.power_on({"transmitter": self.args.transmitter})  # { "frequency": 162.4 })
                     radio.setAGC(False)  # Turn on AGC only if the signal is too strong (high RSSI)
                     radio.mute(False)
                     radio.set_volume(63)
@@ -158,6 +159,7 @@ class Radio(object):
         self.ready = False
         if self.radio:
             self.radio.shutdown()
+
 
 if __name__ == '__main__':
     with Radio() as r:

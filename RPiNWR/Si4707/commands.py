@@ -387,11 +387,11 @@ class SameInterruptCheck(InterruptHandler):
                     radio._fire_event(EndOfMessage())
             if status["PREDET"]:
                 if not radio.same_message:
-                    radio.same_message=SAME.SAMEMessage()
+                    radio.same_message = SAME.SAMEMessage(radio.transmitter)
                 radio.same_message.extend_timeout()
             if status["HDRRDY"]:
                 if not radio.same_message:
-                    radio.same_message=SAME.SAMEMessage()
+                    radio.same_message = SAME.SAMEMessage(radio.transmitter)
                 msg = list(self.status["MESSAGE"])
                 conf = list(self.status["CONFIDENCE"])
                 msg_len = self.status["MSGLEN"]

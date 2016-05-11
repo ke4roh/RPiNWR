@@ -21,7 +21,12 @@ from math import ceil
 import random
 import unittest
 from RPiNWR.SAME import *
+import RPiNWR.SAME as SAME
 import logging
+import json
+from calendar import timegm
+import os
+
 
 class TestSAME(unittest.TestCase):
     @staticmethod
@@ -33,7 +38,7 @@ class TestSAME(unittest.TestCase):
         :return: time in seconds since the epoch
         """
         plus = msg.find('+')
-        return time.mktime(time.strptime("2011" + msg[plus + 6:plus + 13] + 'UTC', '%Y%j%H%M%Z'))
+        return timegm(time.strptime("2011" + msg[plus + 6:plus + 13] + 'UTC', '%Y%j%H%M%Z'))
 
     @staticmethod
     def add_time(msg_tuple, msg_time=None, order=0):
@@ -99,7 +104,7 @@ class TestSAME(unittest.TestCase):
     @staticmethod
     def make_noisy_messages(noise):
         # mimic spotty reception this way.
-        clear_message = '-WXR-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS'
+        clear_message = '-WXR-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS-'
         msg_time = TestSAME.get_time(clear_message)
 
         random.seed(0)  # ensure a repeatable test
@@ -111,14 +116,14 @@ class TestSAME(unittest.TestCase):
 
     def testAverageMessage(self):
         clear_message, messages = self.make_noisy_messages(.03)
-        (msg, confidence) = average_message(messages)
+        (msg, confidence) = average_message(messages, "KID77")
         self.assertEqual(clear_message, msg)
-        self.assertEqual(1, min(confidence))
-        self.assertEqual(8, max(confidence))
+        self.assertEqual(3, min(confidence))
+        self.assertEqual(9, max(confidence))
 
     def testAverageMessageOfJunkHasLowConfidence(self):
         clear_message, messages = self.make_noisy_messages(.05)
-        (msg, confidence) = average_message(messages)
+        (msg, confidence) = average_message(messages, "KID77")
         for i in range(0, len(clear_message)):
             if clear_message[i] != msg[i]:
                 self.assertTrue(confidence[i] < 3, "%s != %s (%d)" % (clear_message[i], msg[i], confidence[i]))
@@ -129,12 +134,83 @@ class TestSAME(unittest.TestCase):
                                       ('-E\x00S-RWT-0\x007183+', [3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 3, 3, 2, 3, 2, 3]),
                                       ('-E\x00S-RWT-0\x007183+', [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3])],
                                      time.time())
-        (msg, confidence) = average_message(messages)
-        self.assertEquals('-EAS-RWT-017183+', msg)
-        self.assertTrue(confidence[2] == 9)  # It's been fixed and verified by the adjacent 2 characters
+        (msg, confidence) = average_message(messages, "WXL58")
+        # The next assertion is not prescriptive as to how to handle the null FIPS character.  It might rightly be
+        # substituted because every value from the possibilities is 3, and there is no confidence lost by substitution.
+        self.assertEquals('-EAS-RWT-0⨀7183+', msg)  # ^^ read that
+        self.assertEquals(8, confidence[2])  # It's been fixed and verified by the adjacent 2 characters
         self.assertTrue(confidence[10] < 3)
 
-    def testRealRWT(self):
+    def test_reconcile_word(self):
+        w, c, d = SAME._reconcile_word("dug", "939", 0, ["dog", "cat", "fly", "pug"])
+        self.assertEqual("dog", w)
+        self.assertEqual([9, 7, 9], c)
+
+        w, c, d = SAME._reconcile_word("030151", "992997", 0,
+                                       '037037-037063-037069-037077-037085-037101-037105-037125-037135-037145-037151-037181-037183-037185'.split(
+                                           '-'))
+        self.assertEqual("037151", w)
+        self.assertEqual(list([int(x) for x in "998997"]), c)
+
+        w, c, d = SAME._reconcile_word("037001-030151", "9999999992997", 7,
+                                       '037037-037063-037069-037077-037085-037101-037105-037125-037135-037145-037151-037181-037183-037185'.split(
+                                           '-'))
+        self.assertEqual("037151", w[7:])
+        self.assertEqual(list([int(x) for x in "998997"]), c[7:])
+
+    def test_dirty_messages(self):
+        logging.basicConfig(level=logging.INFO)
+        messages = self.load_dirty_messages()
+        for msg in messages:
+            msg["calculated"] = average_message(msg["headers"], msg["transmitter"])
+
+            # Make the headers readable in output
+            for i in range(0, len(msg["headers"])):
+                if type(msg["headers"][i][1]) is list:
+                    msg["headers"][i][1] = "".join([str(x) for x in msg["headers"][i][1]])
+                msg["headers"][i][0] = SAME._unicodify(msg["headers"][i][0])
+
+            if "clean" in msg:
+                clean_message = msg["clean"]
+                c_msg = msg["calculated"][0]
+                confidence = msg["calculated"][1]
+
+                # Now, because this message was so dirty, let's assert a certain level of accuracy, which can be tuned upward
+                # as the average_message algorithm is improved.
+                changed_bits = self.count_changed_bits(clean_message, c_msg)
+                changed_bytes = self.count_changed_bytes(clean_message, c_msg)
+                wrong_confidence = self.count_wrong_confidence(clean_message, c_msg, confidence)
+                right_confidence = self.count_right_confidence(clean_message, c_msg, confidence)
+
+                report = "\n".join([self.get_errstr(c_msg, clean_message),
+                                    c_msg,
+                                    "".join([str(x) for x in confidence]),
+                                    clean_message,
+                                    "wrong_bits=%d wrong_bytes=%d wrong_confidence=%d right_confidence=%d " %
+                                    (changed_bits, changed_bytes, wrong_confidence, right_confidence)])
+
+                self.assertTrue("".join([str(x) for x in confidence]).isnumeric(), "\n" + report)
+                for f, v in [("changed_bits", changed_bits), ("changed_bytes", changed_bytes),
+                             ("wrong_confidence", wrong_confidence), ("right_confidence", right_confidence)]:
+                    if f in msg:
+                        if f.startswith("right"):
+                            self.assertTrue(v >= msg[f], "%s=%d, worse than %d\n%s" % (f, v, msg[f], report))
+                        else:
+                            self.assertTrue(v <= msg[f], "%s=%d, worse than %d\n%s" % (f, v, msg[f], report))
+                    else:
+                        msg[f] = v
+
+            msg["calculated"] = (msg["calculated"][0], "".join([str(x) for x in msg["calculated"][1]]))
+
+        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "dirty_messages_1.json"), "w") as f:
+            json.dump(messages, f, indent=4, sort_keys=True, ensure_ascii=False)
+
+    def load_dirty_messages(self):
+        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "dirty_messages.json"), "r") as f:
+            messages = json.load(f)
+        return messages
+
+    def __testRealRWT(self):
         logging.basicConfig(level=logging.INFO)
         # I figured the clean version out by hand based on received
         clean_message = '-WXR-RWT-037001-037037-037063-037069-037077-037085-037101-037105-037125-037135-037145-037151-037181-037183-037185+0600-1181503-KRAH/NWS-'
@@ -176,10 +252,52 @@ class TestSAME(unittest.TestCase):
         self.assertTrue(right_confidence > 1075,
                         "%d -- %.2f per byte" % (right_confidence, right_confidence / len(msg)))
 
+    def _test_probabilities(self):
+        """
+        This is an information-gathering routine.  Its objective is to examine dirty messages and
+        print out a matrix of how many times each combo of bit swaps happened at each confidence level.
+        It's most useful with a huge sample of data (hundreds of messages).
+        """
+        messages = self.load_dirty_messages()
+
+        # This will become a 2d array - score v. bits wrong in a byte (0-8)
+        cbits_by_score = []
+        for i in range(0, 4):
+            cbits_by_score.append([0] * 9)
+
+        # Keep count of how many nulls appear in each certainty
+        sure_null = [0] * 4
+
+        for msg in messages:
+            if "clean" in msg:
+                clean = msg["clean"]
+                for header, scores, when in msg["headers"]:
+                    for i in range(0, min(len(clean), len(header))):
+                        if header[i] == "\u0000":
+                            try:
+                                sure_null[scores[i]] += 1
+                            except TypeError:
+                                sure_null[int(scores[i])] += 1
+                        else:
+                            cbits = self.count_changed_bits((clean[i]), (header[i]))
+                            try:
+                                cbits_by_score[scores[i]][cbits] += 1
+                            except TypeError:
+                                cbits_by_score[int(scores[i])][cbits] += 1
+
+        # Normalize
+        for i in range(0, 4):
+            # Count exactly 1 for all the things that never happened in this trial to account for their possibility
+            all = sum(cbits_by_score[i]) + len(list(filter(lambda x: x == 0, cbits_by_score[i])))
+            cbits_by_score[i] = list([max(x, 1) / all for x in cbits_by_score[i]])
+        logging.error(str(sure_null))
+        self.fail("\n" + "\n".join([str(x) for x in cbits_by_score]))
+
     def count_changed_bits(self, a, b):
         bits = abs(len(a) - len(b)) * 8
         for i in range(0, min(len(a), len(b))):
             bits += bin(ord(a[i]) ^ ord(b[i])).count('1')
+
         return bits
 
     def count_right_confidence(self, clean_message, test_message, confidence):
@@ -210,3 +328,39 @@ class TestSAME(unittest.TestCase):
             else:
                 errstr += "_"
         return errstr
+
+    def test_county_parse(self):
+        c = SAMEMessage(
+            '-WXR-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS-').get_counties()
+        self.assertEqual(['020103', '020209', '020091', '020121', '029047', '029165', '029095', '029037'], c)
+
+    def test_parse_letters_in_fips(self):
+        msg = "-PEP-TXP-WXL58!+0015-1180023-KRAH/NWS-"
+        mm = average_message(TestSAME.add_time(
+            [(msg, '2' * len(msg))] * 3
+        ), "WXL58")
+
+        self.assertEqual(msg, mm[0])
+
+    def test_fips_p_code(self):
+        # WXL29 serves 2 large counties
+        # ('032013', '032027')
+        msg = "-WXR-TOR-932013-832013+0015-1180023-KLKN/NWS-"
+        mm = average_message(TestSAME.add_time(
+            [(msg, '2' * len(msg))] * 3
+        ), "WXL29")
+
+        self.assertEqual(msg, mm[0])
+
+    def test_p_code_with_nulls(self):
+        # These counties differ in 2 digits, so several mutations should resolve correctly
+        clean_msg = "-WXR-TOR-932013-832013+0015-1180023-KLKN/NWS-"
+        msg = list(clean_msg)
+        msg[12] = '\x00'
+        msg[19] = '\x00'
+        msg = "".join(msg)
+        mm = average_message(TestSAME.add_time(
+            [(msg, '2' * len(msg))] * 3
+        ), "WXL29")
+
+        self.assertEqual(clean_msg, mm[0])

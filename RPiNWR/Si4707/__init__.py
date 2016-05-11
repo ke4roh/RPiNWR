@@ -31,6 +31,7 @@ from RPiNWR.Si4707.commands import *
 from RPiNWR.Si4707.data import *
 from RPiNWR.Si4707.events import *
 from RPiNWR.Si4707.exceptions import *
+from RPiNWR.nwr_data import *
 
 
 class Si4707(object):
@@ -52,6 +53,7 @@ class Si4707(object):
         self._logger = logging.getLogger(type(self).__name__)
         self.same_message = None
         self.last_EOM = 0
+        self.transmitter = None
 
     def __enter__(self):
         try:
@@ -220,7 +222,10 @@ class Si4707(object):
         """
         Put an event on the event queue
         """
-        self.__event_queue.put_nowait(event)
+        try:
+            self.__event_queue.put_nowait(event)
+        except AttributeError:
+            raise Si4707StoppedException()
 
     def power_on(self, configuration=None):
         config = DEFAULT_CONFIG
@@ -236,7 +241,9 @@ class Si4707(object):
         for (prop, value) in config["properties"].items():
             self.set_property(prop, value)
 
-        if config.get("frequency"):
+        if config.get("transmitter", None):
+            self.tune(config.get("transmitter"))
+        elif config.get("frequency"):
             self.tune(config["frequency"])
         else:
             self.scan()
@@ -323,12 +330,19 @@ class Si4707(object):
         """
         return self.do_command(SetProperty(property_mnemonic, value)).get()
 
-    def tune(self, frequency):
+    def tune(self, transmitter):
         """
         Change the channel
-        :param frequency: MHz
+        :param frequency: Transmitter call letters preferably, or MHz.   The call letters are used
+           to validate SAME messages received, so it is helpful to have them.
         :return: a tuple of RSSI (dBµV), SNR (dB), and frequency
         """
+        try:
+            frequency = get_frequency(transmitter)
+            self.transmitter = transmitter
+        except KeyError:
+            frequency = transmitter + 0  # Maybe it's a number?
+            self.transmitter = None
         return self.do_command(TuneFrequency(frequency)).get()
 
     def tune_status(self):

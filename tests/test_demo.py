@@ -43,7 +43,7 @@ class TestDemo(unittest.TestCase):
         TestDemo._remove_if_exists("messages.log", "radio.log")
 
     def test_commands(self):
-        with Radio("--hardware-context RPiNWR.Si4707.mock.MockContext --mute-after -1".split()) as r:
+        with Radio("--hardware-context RPiNWR.Si4707.mock.MockContext --mute-after -1  --transmitter KID77".split()) as r:
             running = [False]
 
             def run_radio():
