@@ -180,10 +180,10 @@ class TestSi4707(unittest.TestCase):
         while len(self.__filter_same_events(events, "EOMDET")) < n and not time.time() >= timeout:
             time.sleep(.02)
 
-    # TODO test sending 2 messages to make sure the turnaround is clean.
     def test_send_message(self):
         events = []
         message = '-WXR-RWT-020103-020209-020091-020121-029047-029165-029095-029037+0030-3031700-KEAX/NWS-'
+        message2 = '-WXR-TOR-020103+0030-3031701-KEAX/NWS-'
         interrupts_cleared = [0]
 
         with MockContext() as context:
@@ -199,18 +199,33 @@ class TestSi4707(unittest.TestCase):
                 radio.register_event_listener(check_interrupts_cleared)
                 radio.power_on({"transmitter": "KID77"})
                 radio.register_event_listener(events.append)
-                context.send_message(message=message, voice_duration=1, time_factor=0.1)
+                context.send_message(message=message, voice_duration=80, time_factor=0.1)
                 self.__wait_for_eom_events(events)
+                same_messages = list(filter(lambda x: type(x) is SAMEMessageReceivedEvent, events))
+                self.assertEquals(1, len(same_messages))
+                self.assertEquals(message, same_messages[0].message.get_SAME_message()[0])
+                for interrupt in ["EOMDET", "HDRRDY", "PREDET"]:
+                    times = len(self.__filter_same_events(events, interrupt))
+                    self.assertEquals(3, times, "Interrupt %s happened %d times" % (interrupt, times))
 
-        same_messages = list(filter(lambda x: type(x) is SAMEMessageReceivedEvent, events))
-        self.assertEquals(1, len(same_messages))
-        self.assertEquals(message, same_messages[0].message.get_SAME_message()[0])
-        for interrupt in ["EOMDET", "HDRRDY", "PREDET"]:
-            times = len(self.__filter_same_events(events, interrupt))
-            self.assertEquals(3, times, "Interrupt %s happened %d times" % (interrupt, times))
-        self.assertEquals(1, len(list(filter(lambda x: type(x) is EndOfMessage, events))))
-        self.assertEqual(0, sum(context.same_buffer), "Buffer wasn't flushed")
-        self.assertTrue(10 < interrupts_cleared[0] < 13, interrupts_cleared[0])
+                # Test alert tone check
+                alert_tones = list(filter(lambda x: type(x) is AlertToneCheck, events))
+                self.assertEquals(2, len(alert_tones))
+                self.assertTrue(alert_tones[0].tone_on)
+                self.assertFalse(alert_tones[1].tone_on)
+                self.assertTrue(abs(alert_tones[1].duration - .8) < 0.01)
+
+                # Test EOM
+                self.assertEquals(1, len(list(filter(lambda x: type(x) is EndOfMessage, events))))
+                self.assertEqual(0, sum(context.same_buffer), "Buffer wasn't flushed")
+
+                # And the correct number of interrupts needs to have been handled
+                self.assertTrue(10 < interrupts_cleared[0] < 13, interrupts_cleared[0])
+
+                # Send another message to ensure that the last one got cleared out properly
+                context.send_message(message=message2, voice_duration=0, time_factor=0.1)
+                self.__wait_for_eom_events(events, 6)
+                self.assertEqual(0, len(list(filter(lambda x: type(x) is CommandExceptionEvent, events))))
 
     def test_send_message_no_tone_2_headers(self):
         # This will hit the timeout.

@@ -370,7 +370,7 @@ class SameInterruptCheck(InterruptHandler):
         self.dispatch_message = dispatch_message
 
     def do_command0(self, radio):
-        if self.dispatch_message and radio.same_message:
+        if radio.same_message and (self.dispatch_message or radio.same_message.fully_received()):
             message = radio.same_message
             radio.same_message = None
             message.fully_received(True)
@@ -386,11 +386,11 @@ class SameInterruptCheck(InterruptHandler):
                     radio.last_EOM = time.time()
                     radio._fire_event(EndOfMessage())
             if status["PREDET"]:
-                if not radio.same_message:
+                if not radio.same_message or radio.same_message.fully_received():
                     radio.same_message = SAME.SAMEMessage(radio.transmitter)
                 radio.same_message.extend_timeout()
             if status["HDRRDY"]:
-                if not radio.same_message:
+                if not radio.same_message or radio.same_message.fully_received():
                     radio.same_message = SAME.SAMEMessage(radio.transmitter)
                 msg = list(self.status["MESSAGE"])
                 conf = list(self.status["CONFIDENCE"])
