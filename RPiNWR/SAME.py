@@ -134,11 +134,11 @@ __SAME_CHARS = [
 ]
 
 
-def _word_distance(word, confidence, choice):
+def _word_distance(word, confidence, choice, wildcard=None):
     d = 0
     for i in range(0, len(choice)):
         if len(word) > i:
-            if word[i] != choice[i]:
+            if choice[i] != wildcard and word[i] != choice[i]:
                 try:
                     d += 1 + confidence[i]
                 except TypeError:
@@ -217,6 +217,57 @@ def __rindex(lst, thing):
     return ix
 
 
+_END_SEQUENCE = "+0___-_______-____/NWS-"
+
+
+def _truncate(avgmsg, confidences):
+    """
+    Compute the length of the message and fill in the punctuation characters.
+
+    :param avgmsg:
+    :param confidences:
+    :return: tuple same as the parameters, with updated values
+    """
+    if len(avgmsg) < 38:
+        # It's too short; there's no hope
+        return avgmsg, confidences
+
+    candidates = []
+    for l in range(38, len(avgmsg) + 1, 7):
+        candidates.append((_word_distance(avgmsg[l - 23:l], confidences, _END_SEQUENCE, '_'), l))
+
+    winner = min(candidates)
+    l = winner[1]
+    avgmsg = avgmsg[0:l]
+    confidences = confidences[0:l]
+
+    confidence_chars = len(_END_SEQUENCE.replace("_", ""))
+    # The confidence is greater for a match than each character being right.
+    end_confidence = int((confidence_chars * __median(confidences) - winner[0]) / pow(confidence_chars, -2))
+
+    # Lay in the characters we just checked
+    avgmsg[-23] = '+'
+    confidences[-23] = end_confidence
+    avgmsg[-5] = '/'
+    confidences[-5] = end_confidence
+    avgmsg[-1] = '-'
+    confidences[-1] = end_confidence
+
+    # And infer every other separator from those
+    avgmsg[0] = '-'
+    confidences[0] = end_confidence
+    avgmsg[4] = '-'
+    confidences[4] = end_confidence
+    for i in range(8, len(avgmsg) - 23, 7):
+        avgmsg[i] = '-'
+    confidences[i] = end_confidence
+    avgmsg[-18] = '-'
+    confidences[-18] = end_confidence
+    avgmsg[-10] = '-'
+    confidences[-10] = end_confidence
+    return avgmsg, confidences
+
+
 def average_message(headers, transmitter):
     """
     Compute the correct message by averaging headers, restricting input to the valid character set, and filling
@@ -271,58 +322,8 @@ def average_message(headers, transmitter):
             confidences[i] = 0
         avgmsg.append(chr(c))
 
-    if len(avgmsg) >= 38:  # It must be long enough to work out the length
-        # Find the length, looking from the end
-        plus_ix = __rindex(avgmsg, '+')  # -23
-        slash_ix = __rindex(avgmsg, '/')  # -5
-        dash_ix = __rindex(avgmsg, '-')  # -1
-
-        # Confirm the length from 2 of these 3 found at the right spacing
-        if slash_ix and dash_ix and slash_ix - dash_ix == -2:
-            avgmsg_end = dash_ix + 1
-            end_confidence = 9 << 3
-        elif slash_ix and plus_ix and slash_ix - plus_ix == 18:
-            avgmsg_end = slash_ix + 5
-            end_confidence = 9 << 3
-        elif plus_ix and dash_ix and dash_ix - plus_ix == 22:
-            avgmsg_end = plus_ix + 23
-            end_confidence = 9 << 3
-        # or maybe just the placement of one
-        elif plus_ix:
-            avgmsg_end = plus_ix + 23
-            end_confidence = confidences[plus_ix]
-        elif slash_ix:
-            avgmsg_end = slash_ix + 5
-            end_confidence = confidences[slash_ix]
-        elif dash_ix:  # this is risky because there are many
-            avgmsg_end = dash_ix + 1
-            end_confidence = max(0, confidences[dash_ix] - 8)
-
-        if avgmsg_end < -1:
-            avgmsg = avgmsg[0:avgmsg_end]
-
-        confidences = confidences[0:len(avgmsg)]
-
-        # Lay in the characters we just checked
-        avgmsg[-23] = '+'
-        confidences[-23] = end_confidence
-        avgmsg[-5] = '/'
-        confidences[-5] = end_confidence
-        avgmsg[-1] = '-'
-        confidences[-1] = end_confidence
-
-        # And infer every other separator from those
-        avgmsg[0] = '-'
-        confidences[0] = end_confidence
-        avgmsg[4] = '-'
-        confidences[4] = end_confidence
-        for i in range(8, len(avgmsg) - 23, 7):
-            avgmsg[i] = '-'
-            confidences[i] = end_confidence
-        avgmsg[-18] = '-'
-        confidences[-18] = end_confidence
-        avgmsg[-10] = '-'
-        confidences[-10] = end_confidence
+    # Figure out the length
+    avgmsg, confidences = _truncate(avgmsg, confidences)
 
     # Check the character against the space of possible characters
     for i in range(0, len(avgmsg)):
@@ -556,6 +557,7 @@ class SAMEMessage(object):
             'headers': self.headers,
             "time": self.start_time
         }
+
 
 def _unicodify(str):
     """
