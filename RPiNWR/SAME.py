@@ -206,17 +206,6 @@ def _reconcile_word(msg, confidences, start, choices):
     return msg, confidences, matched
 
 
-def __rindex(lst, thing):
-    """:return the last occurrence of thing, None if it wasn't there."""
-    lst.reverse()
-    try:
-        ix = -1 - lst.index(thing)
-    except ValueError:
-        ix = None
-    lst.reverse()
-    return ix
-
-
 _END_SEQUENCE = "+0___-_______-____/NWS-"
 
 
