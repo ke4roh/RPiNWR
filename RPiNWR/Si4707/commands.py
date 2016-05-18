@@ -352,7 +352,7 @@ class AlertToneCheck(InterruptHandler):
         self.tone_start = history & 1 != 0
         self.tone_end = history & 2 != 0
         self.tone_on = present != 0
-        radio.do_command(SameInterruptCheck(dispatch_message=True))
+        radio._dispatch_any_message(True)
         if self.tone_on:
             radio.tone_start = time.time()
         else:
@@ -362,18 +362,17 @@ class AlertToneCheck(InterruptHandler):
 
 
 class SameInterruptCheck(InterruptHandler):
-    def __init__(self, intack=False, clearbuf=False, dispatch_message=False):
+    def __init__(self, intack=False, clearbuf=False):
         super(SameInterruptCheck, self).__init__(mnemonic="WB_SAME_STATUS", value=0x54)
         self.status = None
         self.intack = intack
-        self.clearbuf = clearbuf or dispatch_message
-        self.dispatch_message = dispatch_message
+        self.clearbuf = clearbuf
 
     def do_command0(self, radio):
-        if radio.same_message and (self.dispatch_message or radio.same_message.fully_received()):
-            message = radio.same_message
-            radio.same_message = None
-            message.fully_received(True)
+        def dispatch_message(message):
+            if radio.same_message == message:
+                radio.same_message = None
+                self.__get_status(radio, clearbuf=True)
             if len(message.headers) > 0:
                 radio._fire_event(SAMEMessageReceivedEvent(message))
 
@@ -386,12 +385,11 @@ class SameInterruptCheck(InterruptHandler):
                     radio.last_EOM = time.time()
                     radio._fire_event(EndOfMessage())
             if status["PREDET"]:
-                if not radio.same_message or radio.same_message.fully_received():
-                    radio.same_message = SAME.SAMEMessage(radio.transmitter)
-                radio.same_message.extend_timeout()
+                if not radio.same_message or radio.same_message.fully_received(extend_timeout=True):
+                    radio.same_message = SAME.SAMEMessage(radio.transmitter, received_callback=dispatch_message)
             if status["HDRRDY"]:
                 if not radio.same_message or radio.same_message.fully_received():
-                    radio.same_message = SAME.SAMEMessage(radio.transmitter)
+                    radio.same_message = SAME.SAMEMessage(radio.transmitter, received_callback=dispatch_message)
                 msg = list(self.status["MESSAGE"])
                 conf = list(self.status["CONFIDENCE"])
                 msg_len = self.status["MSGLEN"]
@@ -417,8 +415,6 @@ class SameInterruptCheck(InterruptHandler):
             if self.status["HDRRDY"]:
                 msg += "HDRRDY "
 
-        if self.dispatch_message:
-            msg += "dispatch_message "
         if self.clearbuf:
             msg += "clearbuf "
         if self.intack:

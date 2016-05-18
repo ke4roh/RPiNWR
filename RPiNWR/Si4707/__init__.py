@@ -77,6 +77,16 @@ class Si4707(object):
             raise
         return self
 
+    def _dispatch_any_message(self, finished=False):
+        """
+        If there is a same_message pending, dispatch it if it is done.
+        :param finished: True if the message is asserted to be complete, False if it's checking against the timeout
+        :return: None
+        """
+        if self.same_message and self.same_message.fully_received(make_it_so=finished):
+            # checking message.fully_received() will dispatch it if it's finished
+            pass
+
     def __command_loop(self):
         while not self.stop:
             command = None
@@ -91,8 +101,7 @@ class Si4707(object):
                     self.do_command(ReceivedSignalQualityCheck(True))
 
                 # Check for a SAME message to dispatch
-                if self.same_message and self.same_message.fully_received():
-                    self.do_command(SameInterruptCheck(dispatch_message=True))
+                self._dispatch_any_message()
 
                 # Run any pending command
                 command = self.__command_queue.get(block=True, timeout=0.05)[1]

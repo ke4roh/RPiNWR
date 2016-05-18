@@ -436,11 +436,13 @@ class SAMEMessage(object):
        - Render itself in CAP and a dict
     """
 
-    def __init__(self, transmitter, headers=None):
+    def __init__(self, transmitter, headers=None, received_callback=None):
         """
         :param transmitter: Call letters for the transmitter, so that FIPS codes can be checked.
         :param headers:  Headers for a legacy message to reconstitute, None if this is a new message,
            and a string if it's just for parsing.
+        :param received_callback: A callable taking one parameter, this SAMEMessage, to be called once, on the
+           occasion that this message is first fully received
         :return:
         """
         if transmitter is not None and transmitter[0] == '-':
@@ -449,6 +451,7 @@ class SAMEMessage(object):
 
         self.transmitter = transmitter
         self.__avg_message = None
+        self.received_callback = received_callback
         self.timeout = 0
         if headers:
             if hasattr(headers, 'lower'):
@@ -477,15 +480,22 @@ class SAMEMessage(object):
         self.headers.append((_unicodify(header), confidence, when))
         self.timeout = when + 6
 
-    def fully_received(self, make_it_so=False):
+    def fully_received(self, make_it_so=False, extend_timeout=False):
+        """
+        :param make_it_so: True to assert that the message has been fully received
+        :param extend_timeout: True to extend the timeout if it has not been reached
+        :return True if the message has been fully received, False otherwise
+        """
         if make_it_so:
             self.timeout = float("-inf")
-        return self.timeout < time.time() or len(self.headers) >= 3
-
-    def extend_timeout(self):
-        if self.fully_received():
-            raise ValueError("Message is already complete.")
-        self.timeout = time.time() + 6
+        complete = self.timeout < time.time() or len(self.headers) >= 3
+        if complete and self.received_callback:
+            cb=self.received_callback
+            self.received_callback=None
+            cb(self)
+        if not complete and extend_timeout:
+            self.timeout = time.time() + 6
+        return complete
 
     def get_SAME_message(self):
         if self.fully_received():
