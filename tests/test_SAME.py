@@ -394,6 +394,23 @@ class TestSAME(unittest.TestCase):
         self.assertEqual(60 * 60, m.get_duration_sec())
         self.assertEqual(1462328280 + 60 * 60, m.get_end_time_sec())
 
+    def test_get_broadcaster(self):
+        self.assertEqual("KRAH/NWS", SAMEMessage("-WXR-SVR-037085-037101+0100-1250218-KRAH/NWS-").get_broadcaster())
+
+    def test_sort_messages(self):
+        self.assertEqual(0, default_SAME_sort(SAMEMessage("-WXR-SVR-037085-037101+0100-1250218-KRAH/NWS-"),
+                                              SAMEMessage("-WXR-SVR-037085-037101+0100-1250218-KRAH/NWS-")))
+        self.assertTrue(default_SAME_sort(SAMEMessage("-WXR-SVR-037085-037101+0100-1250218-KRAH/NWS-"),
+                                          SAMEMessage("-WXR-SVA-037085-037101+0100-1250218-KRAH/NWS-")) < 0)
+        self.assertTrue(default_SAME_sort(SAMEMessage("-WXR-SVR-037085-037101+0100-1250219-KRAH/NWS-"),
+                                          SAMEMessage("-WXR-SVR-037085-037101+0100-1250218-KRAH/NWS-")) < 0)
+        self.assertTrue(default_SAME_sort(SAMEMessage("-WXR-FRW-037085-037101+0100-1250219-KRAH/NWS-"),
+                                          SAMEMessage("-WXR-HMW-037085-037101+0100-1250218-KRAH/NWS-")) < 0)
+        self.assertTrue(default_SAME_sort(SAMEMessage("-CIV-FRW-037085-037101+0100-1250219-KRAH/NWS-"),
+                                          SAMEMessage("-CIV-HMW-037085-037101+0100-1250218-KRAH/NWS-")) < 0)
+        self.assertTrue(default_SAME_sort(SAMEMessage("-CIV-FRW-037085-037101+0100-1250219-KRAH/NWS-"),
+                                          SAMEMessage("-CIV-FRW-037085-037101+0130-1250218-KRAH/NWS-")) < 0)
+
     def test_buffer_against_storm_system(self):
         # Test to see that the correct events are reported in priority order as a storm progresses
         # This test is a little long in this file, but it's somewhat readable.

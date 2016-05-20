@@ -344,10 +344,8 @@ def average_message(headers, transmitter):
     avgmsg = "".join(avgmsg)
 
     # Now break the message into its parts and clean up each one
-    if avgmsg[1:4] not in _ORIGINATOR_CODES:
-        avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, 1, _ORIGINATOR_CODES)
-    if avgmsg[5:8] not in _EVENT_CODES:
-        avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, 5, _ORIGINATOR_CODES)
+    avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, 1, _ORIGINATOR_CODES)
+    avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, 5, _EVENT_CODES)
 
     # Reconcile FIPS codes (which, in some non-weather types of messages, may not be FIPS)
     try:
@@ -618,9 +616,15 @@ def default_SAME_sort(a, b):
     if delta:
         return delta
 
-    delta = a.get_event_type() - b.get_event_type()
-    if delta:
-        return delta
+    if a.get_event_type() > b.get_event_type():
+        return 1
+    elif a.get_event_type() < b.get_event_type():
+        return -1
+
+    if a.get_SAME_message() > b.get_SAME_message():
+        return 1
+    elif a.get_SAME_message() < b.get_SAME_message():
+        return -1
 
     return 0
 
