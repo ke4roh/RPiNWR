@@ -411,6 +411,19 @@ class TestSAME(unittest.TestCase):
         self.assertTrue(default_SAME_sort(SAMEMessage("-CIV-FRW-037085-037101+0100-1250219-KRAH/NWS-"),
                                           SAMEMessage("-CIV-FRW-037085-037101+0130-1250218-KRAH/NWS-")) < 0)
 
+    def test_reconcile_character(self):
+        # D = 0100 0100
+        # L = 0100 1100
+        # M = 0100 1101
+        # and reconciling these 3 with equal weights should yeild L
+        # Easier to write with MSB first, then reverse
+        bitstrue = [0, 3, 0, 0, 2, 3, 0, 1]
+        bitsfalse = [3, 0, 3, 3, 1, 0, 3, 2]
+        bitstrue.reverse()
+        bitsfalse.reverse()
+        self.assertEqual((2, 'L'), SAME._reconcile_character(bitstrue, bitsfalse,
+                                                             'ABCDEFGHIJKLMNOPQRSTUVWXYZ'))
+
     def test_buffer_against_storm_system(self):
         # Test to see that the correct events are reported in priority order as a storm progresses
         # This test is a little long in this file, but it's somewhat readable.
