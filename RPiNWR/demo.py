@@ -70,10 +70,10 @@ class Radio(object):
         radio_logger.addHandler(radio_log_handler)
 
         message_logger = logging.getLogger("RPiNWR.same.message")
-        message_logger.setLevel(logging.INFO)
+        message_logger.setLevel(logging.DEBUG)
         message_log_handler = logging.FileHandler("messages.log", encoding='utf-8')
         message_log_handler.setFormatter(logging.Formatter(datefmt=""))
-        message_log_handler.setLevel(logging.INFO)  # INFO=watches & emergencies, WARN=warnings
+        message_log_handler.setLevel(logging.DEBUG)  # DEBUG=test, INFO=watches & emergencies, WARN=warnings
         message_logger.addHandler(message_log_handler)
 
         # Since this is logging lots of things, best to not also log every time we check for status
