@@ -20,8 +20,13 @@ __author__ = 'ke4roh'
 import re
 import time
 import logging
-import math
+import threading
+import functools
+import calendar
 from RPiNWR.nwr_data import *
+
+# See http://www.nws.noaa.gov/directives/sym/pd01017012curr.pdf
+# also https://www.gpo.gov/fdsys/pkg/CFR-2010-title47-vol1/xml/CFR-2010-title47-vol1-sec11-31.xml
 
 _ORIGINATORS = [
     ("Broadcast station or cable system", "EAS"),
@@ -232,28 +237,22 @@ def _truncate(avgmsg, confidences):
 
     confidence_chars = len(_END_SEQUENCE.replace("_", ""))
     # The confidence is greater for a match than each character being right.
-    end_confidence = int((confidence_chars * __median(confidences) - winner[0]) / pow(confidence_chars, -2))
+    # TODO refine confidence calculation to make more sense
+    end_confidence = int((confidence_chars * __median(confidences) - winner[0]) / confidence_chars)
 
     # Lay in the characters we just checked
-    avgmsg[-23] = '+'
-    confidences[-23] = end_confidence
-    avgmsg[-5] = '/'
-    confidences[-5] = end_confidence
-    avgmsg[-1] = '-'
-    confidences[-1] = end_confidence
+    fips_count = int((len(avgmsg) - len(_END_SEQUENCE) - 8) / 7)
+    frame = '-___-___' + ('-______' * fips_count) + _END_SEQUENCE
+    assert len(frame) == len(avgmsg)
 
-    # And infer every other separator from those
-    avgmsg[0] = '-'
-    confidences[0] = end_confidence
-    avgmsg[4] = '-'
-    confidences[4] = end_confidence
-    for i in range(8, len(avgmsg) - 23, 7):
-        avgmsg[i] = '-'
-    confidences[i] = end_confidence
-    avgmsg[-18] = '-'
-    confidences[-18] = end_confidence
-    avgmsg[-10] = '-'
-    confidences[-10] = end_confidence
+    for i in range(0, len(avgmsg)):
+        if frame[i] != '_':
+            if avgmsg[i] != frame[i]:
+                avgmsg[i] = frame[i]
+                confidences[i] = end_confidence
+            else:
+                confidences[i] = max(end_confidence, confidences[i])
+
     return avgmsg, confidences
 
 
@@ -422,7 +421,7 @@ class SAMEMessage(object):
        - Aggregate headers
        - Know the certainty for aggregated headers
        - Know how to extract the information from the various fields of the SAME message
-       - Render itself in CAP and a dict
+       - Implementation of the structure found in http://www.nws.noaa.gov/directives/sym/pd01017012curr.pdf
     """
 
     def __init__(self, transmitter, headers=None, received_callback=None):
@@ -479,8 +478,8 @@ class SAMEMessage(object):
             self.timeout = float("-inf")
         complete = self.timeout < time.time() or len(self.headers) >= 3
         if complete and self.received_callback:
-            cb=self.received_callback
-            self.received_callback=None
+            cb = self.received_callback
+            self.received_callback = None
             cb(self)
         if not complete and extend_timeout:
             self.timeout = time.time() + 6
@@ -490,13 +489,8 @@ class SAMEMessage(object):
         if self.fully_received():
             if self.__avg_message is None:
                 self.__avg_message = average_message(self.headers, self.transmitter)
-                mtype = self.get_message_type()
-                if mtype == "TOR" or mtype == "SVR" or mtype[2] == "W":
-                    level = logging.CRITICAL
-                elif mtype == "EVI" or mtype[2] == "E":
-                    level = logging.WARNING  # Emergencies are not immediate threats
-                else:
-                    level = logging.INFO
+                mtype = self.get_event_type()
+                level = default_prioritization(mtype)
                 logging.getLogger("RPiNWR.same.message.%s.%s" % (self.get_originator(), mtype)).log(level, "%s", self)
             return self.__avg_message
         else:
@@ -508,7 +502,7 @@ class SAMEMessage(object):
     def get_originator(self):
         return self.get_SAME_message()[0][1:4]
 
-    def get_message_type(self):
+    def get_event_type(self):
         return self.get_SAME_message()[0][5:8]
 
     def get_counties(self):
@@ -537,7 +531,45 @@ class SAMEMessage(object):
             year -= 1
         elif now.tm_yday > 355 and issue_jday < 10:
             year += 1
-        return time.mktime(time.strptime(str(year) + self.get_start_time_sec() + 'UTC', '%Y%j%H%M%Z'))
+        return calendar.timegm(time.strptime(str(year) + self.get_start_time_str() + 'UTC', '%Y%j%H%M%Z'))
+
+    def get_end_time_sec(self):
+        return self.get_start_time_sec() + self.get_duration_sec()
+
+    def applies_to_fips(self, fips):
+        """
+        :param fips: A string representing the FIPS code with optional leading P component to indicate subset of county
+        :return: True if the county was clearly included in the message, False if it was clearly not in the message,
+            and None if there was uncertainty.
+        """
+        if len(fips) == 5:
+            fips = '0' + fips
+        if len(fips) != 6:
+            raise ValueError()
+
+        # TODO identify an uncertain match (i.e. there was ambiguity in the counties received)
+        msg, confidence = self.get_SAME_message()
+        for i in range(15, len(msg) - 20, 7):
+            match = True
+            for x in range(-1, -6, -1):
+                match &= msg[i + x] == fips[x]
+                if not match:
+                    break
+            match &= fips[0] == '0' or msg[i - 6] == '0' or fips[0] == msg[i - 6]
+            if match:
+                return True
+
+        return False
+
+    def is_effective(self, when=None):
+        """
+        :param when: The time for which to check effectiveness, default is now
+        :return: True if the message is effective at the given time, False otherwise
+        """
+        if when is None:
+            when = time.time()
+
+        return self.get_start_time_sec() <= when <= self.get_end_time_sec()
 
     def get_broadcaster(self):
         m = self.get_SAME_message()[0]
@@ -556,6 +588,99 @@ class SAMEMessage(object):
             'headers': self.headers,
             "time": self.start_time
         }
+
+
+def default_prioritization(event_type):
+    """
+    :param event_type: The event type code (3 letters)
+    :return: a larger number for warnings, smaller for watches & emergencies, smaller for statements,
+    and even smaller for tests.
+    """
+    if event_type == "TOR":
+        return logging.CRITICAL + 5
+    elif event_type == "SVR" or event_type[2] == "W":
+        return logging.CRITICAL
+    elif event_type == "EVI" or event_type[2] == "E":
+        return logging.WARNING  # Emergencies are not immediate threats
+    elif event_type[2] == "T":
+        return logging.DEBUG
+    else:
+        return logging.INFO
+
+def default_SAME_sort(a, b):
+    apri = default_prioritization(a.get_event_type())
+    bpri = default_prioritization(b.get_event_type())
+    delta = bpri - apri # highest first
+    if delta:
+        return delta
+
+    delta = b.get_start_time_sec() - a.get_start_time_sec() # newest first
+    if delta:
+        return delta
+
+    delta = a.get_event_type() - b.get_event_type()
+    if delta:
+        return delta
+
+    return 0
+
+class SAMECache(object):
+    """
+    SAMECache holds a collection of (presumably recent) SAME messages.
+
+    Responsibilities:
+    0. Know its county
+    1. Receive SAME messages
+    3. Provide a list of effective messages for a specific county in priority order
+    4. Clear out inactive messages upon request
+
+    Collaborators:
+    Si4707 to populate via SAME message events
+    A consumer, to monitor the messages and clear out inactive messages
+    """
+    # TODO track the time since last received message for my fips, alert if >8 days
+    # TODO monitor RSSI & SNR and alert if out of spec (what is spec)?
+    def __init__(self, county_fips, same_sort=default_SAME_sort):
+        self.__messages_lock = threading.Lock()
+        self.__messages = []
+        self.__elsewhere_messages = []
+        self.__local_messages = []
+        self.county_fips = county_fips
+        self.same_sort = same_sort
+
+    def add_message(self, message):
+        with self.__messages_lock:
+            if self.county_fips is None or message.applies_to_fips(self.county_fips):
+                self.__messages.append(message)
+            else:
+                self.__elsewhere_messages.append(message)
+
+    def get_active_messages(self, when=None, event_pattern=None, here=True):
+        """
+        :param when: the time for which to check effectiveness of the messages, default = the present time
+        :param event_pattern: a regular expression to match the desired event codes.  default = all.
+        :param here: True to retrieve local messages, False to retrieve those for other locales
+        """
+        if when is None:
+            when = time.time()
+        if event_pattern is None:
+            event_pattern = re.compile(".*")
+        elif not hasattr(event_pattern, 'match'):
+            event_pattern = re.compile(event_pattern)
+
+        if here:
+            msgs = self.__messages
+        else:
+            msgs = self.__elsewhere_messages
+
+        l = list(filter(lambda m: m.is_effective(when) and event_pattern.match(m.get_event_type()), msgs))
+        l.sort(key=functools.cmp_to_key(self.same_sort))
+        return l
+
+    def clear_inactive(self, when=None):
+        with self.__messages_lock:
+            self.__messages = self.get_active_messages(when)
+            self.__elsewhere_messages = self.get_active_messages(when, here=False)
 
 
 def _unicodify(str):
