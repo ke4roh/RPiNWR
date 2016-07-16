@@ -185,6 +185,7 @@ class PatchCommand(PowerUp):
 
         return new_rev
 
+
     @staticmethod
     def __decompress_patch(patch):
         import zlib

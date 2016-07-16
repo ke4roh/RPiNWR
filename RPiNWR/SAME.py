@@ -24,6 +24,7 @@ import threading
 import functools
 import calendar
 from RPiNWR.nwr_data import *
+from RPiNWR.CommonMessage import CommonMessage
 
 # See http://www.nws.noaa.gov/directives/sym/pd01017012curr.pdf
 # also https://www.gpo.gov/fdsys/pkg/CFR-2010-title47-vol1/xml/CFR-2010-title47-vol1-sec11-31.xml
@@ -409,7 +410,7 @@ def average_message(headers, transmitter):
 SAME_PATTERN = re.compile('-(EAS|CIV|WXR|PEP)-([A-Z]{3})((?:-\\d{6})+)\\+(\\d{4})-(\\d{7})-([A-Z/]+)-?')
 
 
-class SAMEMessage(object):
+class SAMEMessage(CommonMessage):
     """
     A SAMEMessage represents a message from NWR.
 
@@ -439,13 +440,15 @@ class SAMEMessage(object):
         self.__avg_message = None
         self.received_callback = received_callback
         self.timeout = 0
+        event_id = None
         if headers:
             if hasattr(headers, 'lower'):
                 self.headers = None
                 self.__avg_message = (headers, '9' * len(headers))
                 self.start_time = time.time()
-                self.start_time = 0
+                self.start_time = self.get_start_time_sec()
                 self.timeout = float("-inf")
+                event_id = self.__avg_message
             else:
                 self.headers = headers
                 self.start_time = headers[0][2]
@@ -454,6 +457,11 @@ class SAMEMessage(object):
             self.headers = []
             self.start_time = time.time()
             self.timeout = self.start_time + 6
+
+        self.published = self.start_time
+        if event_id is None:
+            event_id = "%s-%.3f" % (self.transmitter, self.start_time)
+        self.event_id = event_id
 
     def add_header(self, header, confidence):
         if self.fully_received():
@@ -465,6 +473,9 @@ class SAMEMessage(object):
             confidence = "".join([str(x) for x in confidence])
         self.headers.append((_unicodify(header), confidence, when))
         self.timeout = when + 6
+
+    def get_areas(self):
+        return self.get_counties()
 
     def fully_received(self, make_it_so=False, extend_timeout=False):
         """
@@ -559,16 +570,6 @@ class SAMEMessage(object):
 
         return False
 
-    def is_effective(self, when=None):
-        """
-        :param when: The time for which to check effectiveness, default is now
-        :return: True if the message is effective at the given time, False otherwise
-        """
-        if when is None:
-            when = time.time()
-
-        return self.get_start_time_sec() <= when <= self.get_end_time_sec()
-
     def get_broadcaster(self):
         m = self.get_SAME_message()[0]
         start = m.find('+') + 14
@@ -594,6 +595,8 @@ def default_prioritization(event_type):
     :return: a larger number for warnings, smaller for watches & emergencies, smaller for statements,
     and even smaller for tests.
     """
+    if event_type == "EQW":
+        return logging.CRITICAL + 10
     if event_type == "TOR":
         return logging.CRITICAL + 5
     elif event_type == "SVR" or event_type[2] == "W":
