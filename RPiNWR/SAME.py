@@ -662,14 +662,12 @@ class SAMECache(object):
             else:
                 self.__elsewhere_messages.append(message)
 
-    def get_active_messages(self, when=None, event_pattern=None, here=True):
+    def get_active_messages(self, when=time.time, event_pattern=None, here=True):
         """
         :param when: the time for which to check effectiveness of the messages, default = the present time
         :param event_pattern: a regular expression to match the desired event codes.  default = all.
         :param here: True to retrieve local messages, False to retrieve those for other locales
         """
-        if when is None:
-            when = time.time()
         if event_pattern is None:
             event_pattern = re.compile(".*")
         elif not hasattr(event_pattern, 'match'):

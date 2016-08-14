@@ -21,9 +21,26 @@ import functools
 import time
 import re
 from shapely.geometry import Point
+from circuits import Event, BaseComponent, handler
 
 
-class MessageCache(object):
+class new_score(Event):
+    """Event propagating the score of the highest-scoring message in the group."""
+
+
+class update_score(Event):
+    """For the cache to re-check its (own) scores"""
+
+
+default_message_scores = {
+    "SVA": 20, "SV.A": 20,
+    "SVR": 30, "SV.W": 30,
+    "TOA": 35, "TO.A": 35,
+    "TOR": 40, "TO.W": 45
+}
+
+
+class MessageCache(BaseComponent):
     """
     MessageCache holds a collection of (presumably recent) SAME or VTEC (text/CAP) messages.
 
@@ -31,25 +48,50 @@ class MessageCache(object):
     0. Know its county
     1. Receive SAME messages
     3. Provide a list of effective messages for a specific county in priority order
-    4. Clear out inactive messages upon request
+    4. Clear out messages upon expiry
+    5. Fire events for new and expiring messages
 
     Collaborators:
     A message source, either Si4707 or other message retriever
     A consumer, to monitor the messages
+
+    Assumptions:
+    If time function(s) are passed in to the various functions, they will be consistently nondecreasing.
+    Messages are submitted to to the cache in chronological order.
     """
 
     # TODO track the time since last received message for my fips, alert if >8 days
     # TODO monitor RSSI & SNR and alert if out of spec (what is spec)?
-    def __init__(self, latlon, county_fips, sorter):
+    def __init__(self, latlon, county_fips, sorter, message_scores=default_message_scores, clock=time.time):
+        """
+
+        :param latlon: Where you care about messages
+        :param county_fips: More about the location
+        :param sorter: How to sort the types of messags coming in
+        :param callback: a function with one parameter for LocalizedAlertEvent messages as they happen
+        """
+        super().__init__()
         self.__messages_lock = threading.Lock()
         self.__messages = {}
         self.__local_messages = []
         self.latlon = latlon
         self.county_fips = county_fips
-        self.sorter = sorter
-        # TODO add cleanup daemon thread to sweep every so often for expired messages
+        self.message_scores = message_scores
 
+        if sorter is not None:
+            self.sorter = sorter
+        else:
+            self.sorter = lambda a, b: self.message_scores.get(a.get_event_type(), 0) - \
+                                       self.message_scores.get(b.get_event_type(), 0)
+        self.__time = clock
+
+    @handler("new_message")
     def add_message(self, message):
+        """
+        Add the given message and fire any necessary events.
+
+        :param message: A raw weather message - if it has VTEC, it'll be combined.
+        """
         with self.__messages_lock:
             collection = self.__messages
             if message.event_id not in collection:
@@ -58,28 +100,55 @@ class MessageCache(object):
             else:
                 holder = collection[message.event_id]
             holder.add_message(message)
+        self.fireEvent(update_score())
 
-    def get_active_messages(self, when=None, event_pattern=None, here=True):
+    @handler("generate_events")
+    def _generate_events(self, event):
+        event.reduce_time_left(max(0, self._get_first_expiry() - self.__time()))
+        if self._get_first_expiry() < self.__time():
+            with self.__messages_lock:
+                self.__messages = {k: v for k, v in self.__messages.items() if v.get_end_time_sec() >= self.__time() }
+            self.fireEvent(update_score())
+
+    def _get_first_expiry(self):
+        """Return the time (secs since the epoch) at which time the first message will expire"""
+        with self.__messages_lock:
+            try:
+                return min([msg.get_end_time_sec() for msg in self.__messages.values()])
+            except ValueError:
+                return 0
+
+    @handler("update_score")
+    def make_new_scores(self):
+        """Fire events for new and expired messages.  Call this periodically to fire events for expiring messages."""
+        # TODO fire only with the priority of the highest priority message
+        # TODO set generate_events to tick when the last message expires
+        score = 0
+
+        with self.__messages_lock:
+
+            # Compute the top score
+            for here, score_adj in [(True, 0), (False, -10)]:
+                active = self.get_active_messages(here=here)
+                for m in active:
+                    score = max(score, self.message_scores.get(m.get_event_type(), 0) + score_adj)
+
+        self.fireEvent(new_score(score))
+
+    def get_active_messages(self, event_pattern=None, here=True):
         """
-        :param when: the time for which to check effectiveness of the messages, default = the present time
         :param event_pattern: a regular expression to match the desired event codes.  default = all.
         :param here: True to retrieve local messages, False to retrieve those for other locales
         """
-        if when is None:
-            when = time.time()
         if event_pattern is None:
             event_pattern = re.compile(".*")
         elif not hasattr(event_pattern, 'match'):
             event_pattern = re.compile(event_pattern)
 
-        l = list(filter(lambda m: m.is_effective(self.latlon, self.county_fips, here, when) and event_pattern.match(
-            m.get_event_type()), self.__messages.values()))
+        l = list(filter(lambda m: m.is_effective(self.latlon, self.county_fips, here, self.__time) and
+                                  event_pattern.match(m.get_event_type()), self.__messages.values()))
         l.sort(key=functools.cmp_to_key(self.sorter))
         return l
-
-    def clear_inactive(self, when=None):
-        with self.__messages_lock:
-            self.__messages = self.get_active_messages(when)
 
 
 class EventMessageGroup(object):
@@ -99,14 +168,16 @@ class EventMessageGroup(object):
             if msg in self.messages:
                 return
         self.messages.append(msg)
-        self.areas.update(msg.get_areas())
-        # Maybe handle corrections by replacing, maybe just leave them in as historical record
+        self.areas.update(set(msg.get_areas()))
 
     def get_event_id(self):
         if len(self.messages):
             return self.messages[0].event_id
         else:
             return None
+
+    def __eq__(self, other):
+        return other.__type__ is EventMessageGroup and self.get_event_id() == other.get_event_id()
 
     def add_messages(self, messages):
         for m in messages:
@@ -119,26 +190,23 @@ class EventMessageGroup(object):
             s = "-- empty --"
         return "EventMessageGroup: " + s
 
-    def is_effective(self, latlon, fips, here=True, when=None):
+    def is_effective(self, latlon, fips, here=True, when=time.time):
         """
         Is this message effective (at the given place and time)?
         :param latlon: The point you want to check
         :param fips: the county containing the point you want to check
-        :param when: The time at which to evaluate, default= now
+        :param when: a function that will return the current time
         :param here: True if you want to know activity at the point, False for activity elsewhere
            (which could be used to raise alertness)
         :return:
         """
-        if when is None:
-            when = time.time()
-        else:
-            when + 0  # fail if it's not numeric
+        t = when()
 
         # Get all the messages for the county
         # TODO make this work if they're zones, too.
-        cm = list(filter(lambda m: m.applies_to_fips(fips) and m.published <= when and
-                                   (m.get_end_time_sec() > when and
-                                    (m.get_start_time_sec() is None or m.get_start_time_sec() <= when)), self.messages))
+        cm = list(filter(lambda m: m.applies_to_fips(fips) and m.published <= t and
+                                   (m.get_end_time_sec() > t and
+                                    (m.get_start_time_sec() is None or m.get_start_time_sec() <= t)), self.messages))
 
         # If it has a polygon, does it apply here?
         its_here = len(cm)

@@ -89,12 +89,16 @@ class VTEC(CommonMessage):
 
         An invalid VTEC code is logged info.
 
-        :param vtec: a VTEC code -
+        :param vtec: One or more VTEC codes separated by newline, or an iterable of VTEC codes-
         :return: A parsed data structure to allow retrieval of details
         """
         vv = []
         pv = None
-        for vtec in vtecs.split("\n"):
+        try:
+            vi = vtecs.split("\n")
+        except AttributeError:
+            vi = vtecs
+        for vtec in vi:
             vtec = vtec.strip()
             if len(vtec) == 0:
                 continue
@@ -135,20 +139,18 @@ def default_VTEC_sort(aa, bb):
         if a.significance != b.significance and (a.significance is None or b.significance is None):
             return a.significance is None
 
-    if a.phenomenon in _vtec_phenomena_priority:
-        if b.phenomenon in _vtec_phenomena_priority:
-            delta = _vtec_phenomena_priority.index(a.phenomenon) - _vtec_phenomena_priority.index(b.phenomenon)
-            if delta != 0:
-                return delta
-        else:
-            return 1
-    elif b.phenomenon in _vtec_phenomena_priority:
-        return -1
+    if a.phenomenon != b.phenomenon:
+        if a.phenomenon in _vtec_phenomena_priority:
+            if b.phenomenon in _vtec_phenomena_priority:
+                delta = _vtec_phenomena_priority.index(a.phenomenon) - _vtec_phenomena_priority.index(b.phenomenon)
+                if delta != 0:
+                    return delta
+            else:
+                return 1
+        elif b.phenomenon in _vtec_phenomena_priority:
+            return -1
 
-    if b.phenomenon in _vtec_phenomena_priority:
-        return -1
-    else:
-        return a.tracking_number - b.tracking_number
+    return int(a.tracking_number) - int(b.tracking_number)
 
 
 class PrimaryVTEC(VTEC):
@@ -158,7 +160,11 @@ class PrimaryVTEC(VTEC):
         self.product_class, self.action, self.office_id, self.phenomenon, self.significance, \
         self.tracking_number, times = vtec.strip("/").split(".")
         self.start_time, self.end_time = [_parse_vtec_time(x) for x in times.split("-")]
-        self.event_id = vtec[7:21]
+        if self.significance == "A" and self.phenomenon in ["TO", "SV"]:
+            # The SPC issues SV.A and TO.A as KWNS, but updates are from the local office
+            self.event_id = vtec[12:21]
+        else:
+            self.event_id = vtec[7:21]
         self.hydrologic_vtec = []
 
     def __lt__(self, other):

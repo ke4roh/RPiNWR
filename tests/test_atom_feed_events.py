@@ -111,14 +111,14 @@ class TestAtomCAPFeed(unittest.TestCase):
 
         :return:
         """
-        wfo = "KDDC"  # This is where the action was when I was capturing messages
+        wfo = set(["KDDC", "KGLD", "KWNS"])  # This is where the action was when I was capturing messages
         specific_wfo_events = []
 
         def atom_event_handler(event):
             if event.__class__ is ae.NewAtomEntry:
                 cap = CAPMessage(event.message)
                 print(str(cap))
-                if wfo in [x.office_id for x in filter(lambda x: x.raw, cap.vtec)]:
+                if len(wfo & set([x.office_id for x in filter(lambda x: x.raw, cap.vtec)])):
                     specific_wfo_events.append((event.time, cap))
             else:
                 print(str(event))
@@ -126,11 +126,12 @@ class TestAtomCAPFeed(unittest.TestCase):
         aeg = ae.AtomEventGenerator("http://localhost:1989/", atom_event_handler, polling_interval_sec=.01)
         timeout = time.time() + 600  # 600 to get them all
         while time.time() < timeout and 410 != aeg.status.msg:
-            # TODO get this to die gracefully rather thaAn wait for timeout when killed
+            # TODO get this to die gracefully rather than wait for timeout when killed
             time.sleep(.1)
         aeg.stop = True
 
-        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), wfo.lower() + ".cap.p"), "wb") as f:
+        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "_".join(sorted(wfo)).lower() + ".cap.p"),
+                  "wb") as f:
             pickle.dump(specific_wfo_events, f)
 
         self.assertTrue(time.time() < timeout)

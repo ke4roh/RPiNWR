@@ -86,8 +86,8 @@ class TestVTEC(unittest.TestCase):
         # This is a point in the tiny part that was excluded from the warned area on the first update
         ll = (37.791, -99.2400)
         fips = "020047"
-        self.assertTrue(container.is_effective(ll, fips, True, container.messages[0].get_start_time_sec()))
-        self.assertFalse(container.is_effective(ll, fips, True, container.messages[1].published))
+        self.assertTrue(container.is_effective(ll, fips, True, lambda: container.messages[0].get_start_time_sec()))
+        self.assertFalse(container.is_effective(ll, fips, True, lambda: container.messages[1].published))
 
     def test_applicable(self):
         ll = (40.321909, -102.718192)
@@ -103,10 +103,10 @@ class TestVTEC(unittest.TestCase):
 
         # self.assertEqual(len(valerts), 2)
         print("\n".join([str(v.container) for v in valerts]))
-        self.assertTrue(container.is_effective(ll, fips, True, valerts[0].get_start_time_sec()))
-        self.assertTrue(container.is_effective(ll, fips, True, valerts[1].get_start_time_sec()))
-        self.assertFalse(container.is_effective(None, "031145", True, valerts[0].get_start_time_sec()))
-        self.assertTrue(container.is_effective(None, "031145", True, valerts[-1].get_start_time_sec()))
+        self.assertTrue(container.is_effective(ll, fips, True, lambda: valerts[0].get_start_time_sec()))
+        self.assertTrue(container.is_effective(ll, fips, True, lambda: valerts[1].get_start_time_sec()))
+        self.assertFalse(container.is_effective(None, "031145", True, lambda: valerts[0].get_start_time_sec()))
+        self.assertTrue(container.is_effective(None, "031145", True, lambda: valerts[-1].get_start_time_sec()))
 
         # TODO make a location object that knows its lat/lon, FIPS, state code, and zone.
 
@@ -124,3 +124,22 @@ class TestVTEC(unittest.TestCase):
                 self.assertIsNotNone(default_VTEC_sort(valerts[i], valerts[j]), str(valerts[i]) + str(valerts[j]))
                 self.assertIsNotNone(default_VTEC_sort(valerts[j], valerts[i]), str(valerts[j]) + str(valerts[i]))
 
+        # This is the stuff at the start of my May 25 tracking
+        vtecs = list([PrimaryVTEC(x) for x in
+                      """/O.NEW.KWNS.TO.A.0207.160525T0025Z-160525T0700Z/
+                      /O.CON.KGLD.TO.A.0204.000000T0000Z-160525T0500Z/
+                      /O.CON.KDDC.TO.A.0204.000000T0000Z-160525T0500Z/
+                      /O.EXA.KDDC.TO.A.0204.000000T0000Z-160525T0500Z/
+                      /O.CON.KOUN.TO.A.0204.000000T0000Z-160525T0500Z/
+                      /O.CON.KAMA.TO.A.0204.000000T0000Z-160525T0500Z/
+                      /O.EXA.KAMA.TO.A.0204.000000T0000Z-160525T0500Z/
+                      /O.CON.KAMA.TO.A.0204.000000T0000Z-160525T0500Z/""".split("\n")])
+        self.assertTrue(default_VTEC_sort(vtecs[0], vtecs[1]) > 0)
+        for i in range(1, len(vtecs)):
+            self.assertEqual(0, default_VTEC_sort(vtecs[1], vtecs[i]))
+
+    def test_consistent_id_for_SPC_products(self):
+        self.assertEquals(PrimaryVTEC('/O.CON.KGLD.TO.A.0206.000000T0000Z-160525T0600Z/').event_id,
+                          PrimaryVTEC('/O.NEW.KWNS.TO.A.0206.160525T0005Z-160525T0600Z/').event_id)
+        self.assertEquals(PrimaryVTEC('/O.NEW.KWNS.SV.A.0208.160525T0305Z-160525T1000Z/').event_id,
+                          PrimaryVTEC('/O.CON.KTOP.SV.A.0208.000000T0000Z-160525T1000Z/').event_id)

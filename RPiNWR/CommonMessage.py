@@ -18,19 +18,19 @@ __author__ = 'ke4roh'
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import time
+from circuits import Event
 
+class new_message(Event):
+    """This event indicates a new message has arrived."""
 
 class CommonMessage(object):
-    def is_effective(self, when=None):
+    def is_effective(self, when=time.time):
         """
-        :param when: The time for which to check effectiveness, default is now
+        :param when: a function returning nondecreasing floats, default= time.time(), the current time
         :return: True if the message is effective at the given time, False otherwise
         """
-        if when is None:
-            when = time.time()
-
-        return (self.get_start_time_sec() is None or self.get_start_time_sec() <= when) and \
-               (self.get_end_time_sec() is None or when <= self.get_end_time_sec())
+        return (self.get_start_time_sec() is None or self.get_start_time_sec() <= when()) and \
+               (self.get_end_time_sec() is None or when() <= self.get_end_time_sec())
 
     def get_start_time_sec(self):
         raise NotImplemented()

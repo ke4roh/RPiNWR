@@ -27,7 +27,8 @@ setup(
     # dependency_links=[
     #   'git+https://github.com/nioinnovation/Adafruit_Python_GPIO.git'
     # ],
-    setup_requires=['pytest-runner', 'urllib3', 'shapely', 'iso8601'],
+    install_requires=['urllib3', 'shapely', 'iso8601', 'circuits', 'tornado'],
+    setup_requires=['pytest-runner'],
     tests_require=['pytest'],
     test_suite="tests",
 )
