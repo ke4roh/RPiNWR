@@ -2,7 +2,7 @@
 __author__ = 'ke4roh'
 
 from RPiNWR.sources import TextPull
-from threading import Timer, Condition
+from threading import Condition
 import unittest
 import os
 from circuits import Debugger
@@ -43,11 +43,19 @@ class Watcher(Component):
 
     def wait_for_n_events(self, n, filter_function, timeout=float("inf")):
         toolate = time.time() + timeout
+        lll = []
+
+        def ll():
+            lll.clear()
+            lll.extend(filter(filter_function, self.events))
+            return lll
+
         with self.__cv:
-            while time.time() < toolate and len(list(filter(filter_function, self.events))) < n:
+            while time.time() < toolate and len(ll()) < n:
                 self.__cv.wait()
         if time.time() >= toolate:
-            raise TimeoutError("n = %d" % len(list(filter(filter_function, self.events))))
+            raise TimeoutError("n = %d" % len(lll))
+        return lll
 
 
 class TestTextPull(unittest.TestCase):
