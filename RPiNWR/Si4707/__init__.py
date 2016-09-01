@@ -48,7 +48,7 @@ class Si4707(object):
         self.radio_power = False  # Off to begin with
         self.status = None  # Gonna fix this in __enter__
         self.stop = False  # True to stop threads
-        self.__shutdown = False  # True once shutdown has commenced
+        self.shutdown_pending = False  # True once shutdown has commenced
         self.tone_start = None
         self._logger = logging.getLogger(type(self).__name__)
         self.same_message = None
@@ -266,8 +266,8 @@ class Si4707(object):
           Otherwise, put the PowerDown at the end of the command queue and let it execute
         """
         self._logger.debug("Shutting down Si4707")
-        if not self.__shutdown:
-            self.__shutdown = True
+        if not self.shutdown_pending:
+            self.shutdown_pending = True
             if self.radio_power:
                 if hard:
                     # Put in a PowerDown command immediately
@@ -290,7 +290,7 @@ class Si4707(object):
         except Exception as e:
             self._logger.exception("cleaning up")
         finally:
-            self.__shutdown = True
+            self.shutdown_pending = True
             self.stop = True
 
     def do_command(self, command):

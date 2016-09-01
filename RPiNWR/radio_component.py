@@ -159,7 +159,7 @@ class Radio_Component(BaseComponent):
                         Timer(self.args.mute_after, radio.mute, [True]).start()  # Mute the radio after 15 seconds
                     self.ready = True
                     next_rsq_check = 0
-                    while not radio.stop:
+                    while not radio.shutdown_pending and not radio.stop:
                         if time.time() > next_rsq_check:
                             if radio.radio_power:
                                 self.fire(radio_status(radio.do_command(ReceivedSignalQualityCheck()).get()))
@@ -173,6 +173,7 @@ class Radio_Component(BaseComponent):
                         # The radio turns off when the with block exits
                     self.fire(radio_status(False))
                     self.ready = False
+                    print("Radio shutdown.")
 
         except KeyboardInterrupt:
             pass  # suppress the stack trace
@@ -183,11 +184,11 @@ class Radio_Component(BaseComponent):
     def stopped(self, manager):
         self.ready = False
         if self.radio:
-            self.radio.shutdown()
-
+            Timer(0, self.radio.shutdown).start()
 
 class radio_quit(Event):
     pass
+
 
 class radio_status(Event):
     pass
