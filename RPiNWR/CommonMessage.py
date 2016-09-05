@@ -38,6 +38,9 @@ class CommonMessage(object):
     def get_end_time_sec(self):
         raise NotImplemented()
 
+    def get_event_type(self):
+        raise NotImplemented()
+
     def __eq__(self, other):
         if type(other) is type(self):
             ignored = self._fields_to_skip_for_eq()

@@ -107,7 +107,7 @@ class MessageCache(BaseComponent):
         event.reduce_time_left(max(0, self._get_first_expiry() - self.__time()))
         if self._get_first_expiry() < self.__time():
             with self.__messages_lock:
-                self.__messages = {k: v for k, v in self.__messages.items() if v.get_end_time_sec() >= self.__time() }
+                self.__messages = {k: v for k, v in self.__messages.items() if v.get_end_time_sec() >= self.__time()}
             self.fireEvent(update_score())
 
     def _get_first_expiry(self):
