@@ -107,11 +107,11 @@ class TextPull(AlertSource):
             self.latest_messages = msgs
             for msg in new_messages:
                 for tm in NWSText.factory(msg):
-                    self.fireEvent(new_message(tm, channel="*"))
-            self.fireEvent(net_status(net_status.ok), channel="*")
+                    self.fireEvent(new_message(tm, "*"))
+            self.fireEvent(net_status(net_status.ok), "*")
             self.last_status_time = time.time()
         else:
-            self.fireEvent(net_status(net_status.down), channel="*")
+            self.fireEvent(net_status(net_status.down), "*")
             self.last_status_time = time.time()
             # TODO log it
             raise Exception("{0:d} {1:s}".format(response.status, response.reason))
@@ -120,9 +120,9 @@ class TextPull(AlertSource):
     def generate_events(self, event):
         if self.last_status_time + self.timer.interval < time.time():
             if self.is_operational():
-                self.fireEvent(net_status(net_status.ok), channel="*")
+                self.fireEvent(net_status(net_status.ok), "*")
             else:
-                self.fireEvent(net_status(net_status.down), channel="*")
+                self.fireEvent(net_status(net_status.down), "*")
         event.reduce_time_left(self.last_status_time + self.timer.interval)
 
     @handler("radio_message_escrow")
