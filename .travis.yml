@@ -6,6 +6,6 @@ python:
 install: pip install coveralls
 # command to install dependencies
 script:
-  ( cmdpid=$BASHPID; (sleep 90; kill -SIGABRT $cmdpid) & PYTHONFAULTHANDLER=true coverage run --source=RPiNWR ./setup.py test )
+  ( cmdpid=$BASHPID; (sleep 160; kill -SIGABRT $cmdpid) & PYTHONFAULTHANDLER=true coverage run --source=RPiNWR ./setup.py test )
 after_success:
   coveralls
