@@ -6,6 +6,6 @@ python:
 install: pip install coveralls
 # command to install dependencies
 script:
-  coverage run --source=RPiNWR ./setup.py test --addopts --timeout=200
+  coverage run --source=RPiNWR ./setup.py test
 after_success:
   coveralls
