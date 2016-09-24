@@ -46,3 +46,9 @@ DocumentRoot /home/pi/RPiNWR/bootstrap/htdocs
 ```
 # configset/config/set_config.sh
 ```
+
+# TODO
+
+- Health check for network connection at boot time
+- Once netowork parameter configured, record it to next boot.
+- Save location information for data processing
