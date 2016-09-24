@@ -13,10 +13,6 @@ if ($ifcfg =~ /HWaddr ([0-9a-f:]+)/) {
     $x5 = hex($w[5]);
     $sn = $x3 * 65536 + $x4 + 256 + $x5;
 }
-if (open(F,">$mypath/../lightning/id.py")) {
-    print F qq(serial_number = "$sn"\n);
-    close(F);
-}
 
 if (($p->{'ssid'} ne "") || ($ARGV[0] eq "init")) {
     if (open(JSON,">$mypath/network.json")) {
@@ -40,8 +36,8 @@ close(JSON);
 
 print $q->header(-content_type => "application/json");
 if ($p->{'ssid'} ne "") {
-    system("perl $mypath/../piset/mkcfg.pl");
-    system("sudo $mypath/../piset/config/set_config.sh wifi_client");
+    system("perl $mypath/../configset/mkcfg.pl");
+    system("sudo $mypath/../configset/config/set_config.sh wifi_client");
     print qq({"stat":"OK"});
 }
 else {

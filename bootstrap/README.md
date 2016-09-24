@@ -11,7 +11,7 @@
 #### add directory permission to the /etc/apache2/apache2.conf
 
 ```
-<Directory /home/pi/Pi-Lightning/htdocs>
+<Directory /home/pi/RPiNWR/bootstrap/htdocs>
        Options Indexes FollowSymLinks ExecCGI
        AllowOverride All
        Require all granted
@@ -38,6 +38,6 @@ AddHandler cgi-script .cgi
 #### change documentroot in sites-enabled/000-default.conf
 
 ```
-DocumentRoot /home/pi/Pi-Lightning/htdocs
+DocumentRoot /home/pi/RPiNWR/bootstrap/htdocs
 ```
 
