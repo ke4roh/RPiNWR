@@ -41,3 +41,8 @@ AddHandler cgi-script .cgi
 DocumentRoot /home/pi/RPiNWR/bootstrap/htdocs
 ```
 
+### setup hostapd and network
+
+```
+# configset/config/set_config.sh
+```
