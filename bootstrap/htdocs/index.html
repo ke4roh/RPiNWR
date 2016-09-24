@@ -1,0 +1,223 @@
+<!doctype html>
+<!--
+  Material Design Lite
+  Copyright 2015 Google Inc. All rights reserved.
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="A front-end template that helps you build fast, modern mobile web apps.">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
+    <title>RPiNWR</title>
+
+    <!-- Add to homescreen for Chrome on Android -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="icon" sizes="192x192" href="images/lightning.png">
+
+    <!-- Add to homescreen for Safari on iOS -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="Material Design Lite">
+    <link rel="apple-touch-icon-precomposed" href="images/lightning.png">
+
+    <!-- Tile icon for Win8 (144x144 + tile color) -->
+    <meta name="msapplication-TileImage" content="images/lightning.png">
+    <meta name="msapplication-TileColor" content="#3372DF">
+
+    <link rel="shortcut icon" href="favicon.ico">
+
+    <!-- SEO: If your mobile URL is different from the desktop URL, add a canonical link to the desktop page https://developers.google.com/webmasters/smartphone-sites/feature-phones -->
+    <!--
+    <link rel="canonical" href="http://www.example.com/">
+    -->
+
+    <link rel="stylesheet" href="mdl/material.blue-red.min.css">
+    <link rel="stylesheet" href="css/styles.css">
+
+    <link href="mdl/components.css" rel="stylesheet">
+    <script src="mdl/components.js"></script>
+
+  </head>
+  <body class="components">
+    <div class="demo-layout mdl-layout mdl-js-layout mdl-layout--fixed-header">
+
+      <header class="demo-header mdl-layout__header mdl-color--grey-100 mdl-color-text--grey-600">
+        <div class="mdl-layout__header-row">
+          <span class="mdl-layout-title">Lightning Sensor</span>
+        </div>
+      </header>
+
+      <div class="mdl-components mdl-js-components mdl-cell mdl-cell--12-col">
+	<aside class="mdl-components__nav docs-text-styling mdl-shadow--4dp">
+
+    <a href="#index-section" class="mdl-components__link mdl-component network">
+      <span class="mdl-components__link-text">Network</span>
+    </a>
+    <a href="#restart-section" class="mdl-components__link mdl-component restart">
+      <span class="mdl-components__link-text">Restart</span>
+    </a>
+    <a href="#help-section" class="mdl-components__link mdl-component help">
+      <span class="mdl-components__link-text">Help</span>
+    </a>
+    <a href="#about-section" class="mdl-components__link mdl-component about">
+      <span class="mdl-components__link-text">About</span>
+    </a>
+  </aside>
+
+      <main class="mdl-layout__content mdl-color--grey-100 mdl-components__pages">
+
+	<section id="help-section" class="mdl-components__page mdl-grid">
+	  <div class="mdl-cell mdl-cell--12-col">
+	    <div class="docs-text-styling component-title">
+	      <h3>Help</h3>
+	    </div>
+	  </div>
+	</section>
+
+        <section id="about-section" class="mdl-components__page mdl-grid">
+	  <div class="mdl-cell mdl-cell--12-col">
+	    <div class="docs-text-styling component-title">
+              <h3>About</h3>
+	    </div>
+              <p>A Raspberry Pi Weather Radio 0.1 BETA</p>
+              <p>Serial : <span id="serial"></span></p>
+	      <p></p>
+	  </div>
+	</section>
+
+	<section id="restart-section" class="mdl-components__page mdl-grid">
+	  <div class="mdl-cell mdl-cell--12-col">
+	    <div class="docs-text-styling component-title">
+              <h3>Restart</h3>
+	    </div>
+    <p>Restart Raspberry Pi</p>
+	      <form action="#i" method="POST" onsubmit="restart();return false;">
+		<button class="mdl-button mdl-js-button mdl-button--raised mdl-js-ripple-effect mdl-button--accent">Restart</button>
+	      </form>
+	  </div>
+	</section>
+	
+	<section id="index-section" class="mdl-components__page mdl-grid">
+	  <div class="mdl-cell mdl-cell--12-col">
+	    <div class="docs-text-styling component-title">
+              <h3>Network</h3>
+	    </div>
+	      <p>Pleaes setup network parameters</p>
+
+	    <form action="#" method="POST" onsubmit="network_save(this);return false;">
+
+	      <div class="mdl-cell mdl-cell--6-col mdl-cell--8-col-tablet">
+		<div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+		  <input class="mdl-textfield__input" type="text" id="ssid">
+		  <label class="mdl-textfield__label" for="ssid">SSID</label>
+		</div>
+	      </div>
+	      <div class="mdl-cell mdl-cell--6-col mdl-cell--8-col-tablet">
+		<div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+		  <input class="mdl-textfield__input" type="password" id="passphrase">
+		  <label class="mdl-textfield__label" for="passphrase">Passphrase</label>
+		</div>
+	      </div>
+
+
+	      <label class="mdl-radio mdl-js-radio mdl-js-ripple-effect" for="option-1">
+		<input type="radio" id="option-1" class="mdl-radio__button" name="addrtype" value="dhcp" checked>
+		<span class="mdl-radio__label">DHCP</span>
+	      </label>
+	      <label class="mdl-radio mdl-js-radio mdl-js-ripple-effect" for="option-2">
+		<input type="radio" id="option-2" class="mdl-radio__button" name="addrtype" value="manual">
+		<span class="mdl-radio__label">Manual</span>
+	      </label>
+	    
+	      <div class="mdl-cell mdl-cell--6-col mdl-cell--8-col-tablet">
+		<div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+		  <input class="mdl-textfield__input" type="text" id="ipaddr">
+		  <label class="mdl-textfield__label" for="ipaddr">IP address</label>
+		</div>
+	      </div>
+	      <div class="mdl-cell mdl-cell--6-col mdl-cell--8-col-tablet">
+		<div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+		  <input class="mdl-textfield__input" type="text" id="netmask">
+		  <label class="mdl-textfield__label" for="netmask">Sub netmask</label>
+		</div>
+	      </div>
+	      <div class="mdl-cell mdl-cell--6-col mdl-cell--8-col-tablet">
+		<div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+		  <input class="mdl-textfield__input" type="text" id="gateway">
+		  <label class="mdl-textfield__label" for="gateway">Default gateway</label>
+		</div>
+	      </div>
+	      <div class="mdl-cell mdl-cell--6-col mdl-cell--8-col-tablet">
+		<div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+		  <input class="mdl-textfield__input" type="text" id="proxy">
+		  <label class="mdl-textfield__label" for="proxy">Proxy server (optional)</label>
+		</div>
+	      </div>
+
+
+	    <button class="mdl-button mdl-js-button mdl-button--raised mdl-js-ripple-effect mdl-button--colored">Save</button><span id="respmsg"></span>
+    </form>
+    </div>
+	</section>
+      </main>
+
+      </div>
+    </div>
+    <script src="mdl/material.min.js"></script>
+    <script src="js/jquery-3.1.0.min.js"></script>
+    <script>
+    function network_save(form){
+	$.post("network_save.cgi",{
+	    'ssid':form.ssid.value,
+	    'passphrase':form.passphrase.value,
+	    'addrtype':form.addrtype.value,
+	    'ipaddr':form.ipaddr.value,
+	    'netmask':form.netmask.value,
+	    'gateway':form.gateway.value,
+	    'proxy':form.proxy.value
+	},function(r){
+	    if (r.stat == "OK") {
+		document.getElementById('respmsg').innerHTML = 'Saved';
+	    }
+	});
+    }
+
+function restart(){
+    $.get('restart.cgi');
+    location.hash = '';
+}
+
+$(function(){
+    $.getJSON('network.json',function(r){
+	var el = ['ssid','passphrase','ipaddr','netmask','gateway','proxy']
+	for (var i in el) {
+	    var e = el[i];
+	    if (r[e] != "") {
+		document.getElementById(e).value = r[e];
+		document.getElementById(e).parentNode.classList.add('is-dirty');
+	    }
+	}
+	if (r.addrtype == "manual") {
+	    document.getElementById("option-2").parentNode.MaterialRadio.check();
+	}
+	document.getElementById("serial").innerHTML = r.serial;
+    });
+
+});
+
+    </script>
+  </body>
+</html>
