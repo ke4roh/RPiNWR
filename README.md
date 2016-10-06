@@ -45,6 +45,9 @@ add functionality and bring the demo code up to a more practical
 implementation.  
 
 ## Helping
+Check out the issues in WaffleIO:
+[![Stories in Ready](https://badge.waffle.io/ke4roh/RPiNWR.svg?label=ready&title=Ready)](http://waffle.io/ke4roh/RPiNWR)
+
 Please submit your log files as issues! Messages and RSSI reports are 
 especially useful at the moment.  
 
