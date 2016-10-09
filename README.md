@@ -14,8 +14,23 @@ error handling!  It has unit tests!  It has events!  Callbacks!
 * Quick (<.5 sec) response to received messages
 * Multi-threaded event model
 
-## Code
-Before you run the radio, you'll need to set up dependencies:
+## Make one!
+Here's what you need to do to turn this repository into something that works for you.
+
+### Parts list
+You need  a few parts:
+* Raspberry Pi 3B+
+* AIWIndustries Weather Radio receiver board + accessories (antenna, case, volume knob)
+* 8GB+ SD card
+* USB power supply
+
+### Installation steps
+1. Install Raspbian on the SD card.
+2. Put all the parts together.  They only fit one way.
+3. Hook it up to a TV and set up WiFi if you wish.  Get it so you can SSH in.
+4. Optionally set up [Dataplicity](https://www.dataplicity.com/) so you can log in from anywhere
+5. Log in as pi and clone this repo.
+6. Set up dependencies:
 
 ```bash
 sudo apt-get update
@@ -28,7 +43,7 @@ git clone https://github.com/nioinnovation/Adafruit_Python_GPIO.git
 sudo ./setup.py test
 ```
 
-Running the radio is simple:
+5. Running the radio is simple:
 ```bash
 python3 -m RPiNWR.demo --transmitter WXL58
 ```
