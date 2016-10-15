@@ -5,6 +5,8 @@ python:
   - "3.5"
 install:
   pip install -U setuptools coveralls
+before_script:
+- ulimit -c unlimited -S       # enable core dumps
 script:
   ( cmdpid=$BASHPID; (sleep 300; kill -SIGABRT $cmdpid) & PYTHONFAULTHANDLER=true coverage run --source=RPiNWR ./setup.py test )
 after_success:
