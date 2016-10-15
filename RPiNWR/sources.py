@@ -15,8 +15,12 @@ from lxml import html
 from circuits import BaseComponent, handler, Timer, Event
 from circuits.web.client import Client, request
 from urllib.parse import urlencode
-from .NWSText import NWSText
+from .NWSText import NWSText, FIPS_STATE
 from enum import Enum
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+from threading import Lock
+import os
 
 
 class new_message(Event):
@@ -48,6 +52,7 @@ class AlertSource(BaseComponent):
     def is_operational(self):
         raise NotImplementedError()
 
+
 class TextPull(AlertSource):
     channel = "TextPull"
     client = Client(channel=channel)
@@ -59,43 +64,52 @@ class TextPull(AlertSource):
         self.url = url
         super().__init__(location)
         self.last_status_time = 0
-        # {'lat': loc.lat, 'lon': loc.lon, 'warnzone': loc.zone, 'firewxzone': loc.firezone}
+        # {'lat': loc.lat, 'lon': loc.lon, fips6: 001089, warncounty: ALC089, 'warnzone': loc.zone, 'firewxzone': loc.firezone}
 
     def init(self):
         self.latest_messages = set([])
         self.lastquery = 0
+
         if self.url is not None:
+
+            # Construct a web-specific version of the location
+            loc = dict(self.location)
+            if "warncounty" not in loc and "fips6" in loc:
+                loc['warncounty'] = FIPS_STATE[loc['fips6'][-5:-3]] + "C" + loc['fips6'][-3:]
+            if 'fips6' in loc:
+                del loc['fips6']
+
             self.timer = Timer(interval=60,
-                               event=request("GET", self.url + 'showsigwx.php?' + urlencode(self.location)),
+                               event=request("GET", self.url + 'showsigwx.php?' + urlencode(loc)),
                                persist=True, channel=self.channel)
             self.timer.register(self)
 
-# # import re, urllib3
-# #_http = urllib3.PoolManager()
-#     def new_location(self, location):
-#         # This code deduces location data (wfo, zones & fips) from lat & lon, but it only works if there is some
-#         # alert for the place.  (One could wait for there to be an alert and try this, but that's sketchy.
-#         # There are also polygons for these data available from NWS, but they change sometimes.  (Maybe worth
-#         # checking here from time to time?)
-#         # TODO figure out if there's a use for this process and use it or not.
-#         # This must be made async before using - it's written to be synchronous for now
-#         r = _http.request('GET', self.url + 'MapClick.php',
-#                           fields={'lat': location["lat"], 'lon': location["lon"]},
-#                           headers={'User-Agent': 'urllib3/RPiNWR', 'Accept': '*/*'})
-#
-#         if r.status == 200:
-#             ds = r.data.decode('utf-8')
-#
-#             def f(xp):
-#                 try:
-#                     return re.search(xp, ds).group(1)
-#                 except Exception:
-#                     return None
-#
-#             location.wfo = f("wfo=(\w+)")
-#             location.fips = f("county=(\w+)")
-#             location.zone = f("(?:warnzone|zoneid)=(\w+)")
-#             location.firewxzone = f("firewxzone=(\w+)")
+            # # import re, urllib3
+            # #_http = urllib3.PoolManager()
+            #     def new_location(self, location):
+            #         # This code deduces location data (wfo, zones & fips) from lat & lon, but it only works if there is some
+            #         # alert for the place.  (One could wait for there to be an alert and try this, but that's sketchy.
+            #         # There are also polygons for these data available from NWS, but they change sometimes.  (Maybe worth
+            #         # checking here from time to time?)
+            #         # TODO figure out if there's a use for this process and use it or not.
+            #         # This must be made async before using - it's written to be synchronous for now
+            #         r = _http.request('GET', self.url + 'MapClick.php',
+            #                           fields={'lat': location["lat"], 'lon': location["lon"]},
+            #                           headers={'User-Agent': 'urllib3/RPiNWR', 'Accept': '*/*'})
+            #
+            #         if r.status == 200:
+            #             ds = r.data.decode('utf-8')
+            #
+            #             def f(xp):
+            #                 try:
+            #                     return re.search(xp, ds).group(1)
+            #                 except Exception:
+            #                     return None
+            #
+            #             location.wfo = f("wfo=(\w+)")
+            #             location.fips = f("county=(\w+)")
+            #             location.zone = f("(?:warnzone|zoneid)=(\w+)")
+            #             location.firewxzone = f("firewxzone=(\w+)")
 
     @handler("response")
     def _receive_response(self, response):
@@ -151,8 +165,57 @@ class TextPull(AlertSource):
         return self.lastquery < (time.time() - self.timer.interval + 30)
 
 
+class _FolderMonitorEventListener(FileSystemEventHandler):
+    def __init__(self):
+        self.hot_items = set()
+        self.hot_items_lock = Lock()
+
+    def on_created(self, event):
+        self.on_modified(event)
+
+    def on_modified(self, event):
+        if not event.is_directory:
+            with self.hot_items_lock:
+                self.hot_items.add(event.src_path)
+
+
+class FolderMonitor(AlertSource):
+    def __init__(self, location, monitor_path, quiescent_time=3):
+        self.monitor_path = monitor_path
+        self.observer = Observer()
+        self.__listener = _FolderMonitorEventListener()
+        self.observer.schedule(self.__listener, monitor_path, recursive=True)
+        self.observer.start()
+        self.quiescent_time = quiescent_time
+        super().__init__(location)
+        self.last_status_time = 0
+
+    @handler("stopped")
+    def stopped(self):
+        self.observer.stop()
+        self.observer.join()
+
+    @handler("generate_events")
+    def generate_events(self, event):
+        event.reduce_time_left(self.quiescent_time)
+        with self.__listener.hot_items_lock:
+            done = set(
+                filter(lambda f: os.path.getmtime(f) < (time.time() - self.quiescent_time), self.__listener.hot_items))
+            self.__listener.hot_items -= done
+        for f in done:
+            with open(f) as fh:
+                msg = fh.read()
+            tmsg = NWSText.factory(msg)
+            if len(tmsg):
+                for m in tmsg:
+                    if len(m.vtec) > 0:
+                        self.fireEvent(new_message(tmsg))
+                        # TODO os.remove(f) - except folders
+
+
 class radio_message_escrow(Event):
     pass
+
 
 class EscrowAction(Enum):
     escrowed = "A radio message has been waylaid pending net validation."

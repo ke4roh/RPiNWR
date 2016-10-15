@@ -186,9 +186,23 @@ class Radio_Component(BaseComponent):
         if self.radio:
             Timer(0, self.radio.shutdown).start()
 
+    @handler("aiwi_relay_control")
+    def relay_ctl(self, relay, on):
+        self.context.relay(relay, on)
+
+
 class radio_quit(Event):
     pass
 
 
 class radio_status(Event):
     pass
+
+
+class aiwi_relay_control(Event):
+    """
+    Control the relays
+
+    :param relay 0 or 1
+    :param on True or False
+    """

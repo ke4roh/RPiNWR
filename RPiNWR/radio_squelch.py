@@ -27,8 +27,6 @@ from .sources import radio_message_escrow, EscrowAction
 class Radio_Squelch(BaseComponent):
     """
     Suppress TOR messages from the radio if the net is working.
-
-    :return:
     """
 
     def __init__(self, clock=time):

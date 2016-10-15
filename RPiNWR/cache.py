@@ -39,6 +39,15 @@ default_message_scores = {
     "TOR": 40, "TO.W": 45
 }
 
+def by_score_and_time(a,b):
+    """
+    Compare CommonMessages by score and time, sort in descending order of both
+    """
+    delta = b-a
+    if delta:
+        return delta
+    return b.get_start_time_sec() - a.get_start_time_sec()
+
 
 class MessageCache(BaseComponent):
     """
@@ -62,7 +71,7 @@ class MessageCache(BaseComponent):
 
     # TODO track the time since last received message for my fips, alert if >8 days
     # TODO monitor RSSI & SNR and alert if out of spec (what is spec)?
-    def __init__(self, latlon, county_fips, sorter, message_scores=default_message_scores, clock=time.time):
+    def __init__(self, location, sorter=by_score_and_time, message_scores=default_message_scores, clock=time.time):
         """
 
         :param latlon: Where you care about messages
@@ -74,8 +83,8 @@ class MessageCache(BaseComponent):
         self.__messages_lock = threading.Lock()
         self.__messages = {}
         self.__local_messages = []
-        self.latlon = latlon
-        self.county_fips = county_fips
+        self.latlon = (location.lat, location.lon)
+        self.county_fips = location.fips
         self.message_scores = message_scores
 
         if sorter is not None:

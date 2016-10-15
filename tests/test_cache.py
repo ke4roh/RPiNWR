@@ -453,7 +453,8 @@ class TestCache(unittest.TestCase):
     """.split("\n")
 
         t = 0
-        self.manager = buf = MessageCache((35.73, -78.85), "037183", default_SAME_sort, clock=lambda: t)
+        self.manager = buf = MessageCache({'lat': 35.73, 'lon': -78.85, 'fips6': "037183"},
+                                          default_SAME_sort, clock=lambda: t)
         watcher = Watcher()
         scorewatcher = ScoreWatcher()
         (buf + watcher + scorewatcher + Debugger()).start()
@@ -514,7 +515,8 @@ class TestCache(unittest.TestCase):
         # https://mesonet.agron.iastate.edu/vtec/#2016-O-NEW-KGLD-TO-W-0029/USCOMP-N0Q-201605250145
 
         t = 0
-        self.manager = buf = MessageCache((40.321909, -102.718192), "008125", default_VTEC_sort, clock=lambda: t)
+        self.manager = buf = MessageCache({"lat":40.321909, "lon":-102.718192, "fips6":"008125"},
+                                          default_VTEC_sort, clock=lambda: t)
         watcher = Watcher()
         scorewatcher = ScoreWatcher()
         (buf + watcher + scorewatcher + Debugger()).start()
