@@ -27,7 +27,7 @@ setup(
     # dependency_links=[
     #   'git+https://github.com/nioinnovation/Adafruit_Python_GPIO.git'
     # ],
-    install_requires=['urllib3', 'shapely', 'iso8601', 'circuits', 'lxml', 'python-dateutil'],
+    install_requires=['urllib3', 'shapely', 'iso8601', 'circuits', 'lxml', 'python-dateutil', 'watchdog'],
     setup_requires=['pytest-runner'],
     tests_require=['pytest'],
     test_suite="tests",
