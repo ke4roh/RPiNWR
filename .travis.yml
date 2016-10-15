@@ -3,10 +3,9 @@ python:
   - "3.4.2"
   - "3.4.3"
   - "3.5"
-install: 
+install:
   pip install -U setuptools coveralls
-# command to install dependencies
 script:
-  coverage run --source=RPiNWR ./setup.py test
+  ( cmdpid=$BASHPID; (sleep 300; kill -SIGABRT $cmdpid) & PYTHONFAULTHANDLER=true coverage run --source=RPiNWR ./setup.py test )
 after_success:
   coveralls
