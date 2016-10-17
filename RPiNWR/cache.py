@@ -39,15 +39,15 @@ default_message_scores = {
     "TOR": 40, "TO.W": 45
 }
 
-def by_score_and_time(a,b):
+
+def by_score_and_time(a, b):
     """
     Compare CommonMessages by score and time, sort in descending order of both
     """
-    delta = b-a
+    delta = b - a
     if delta:
         return delta
     return b.get_start_time_sec() - a.get_start_time_sec()
-
 
 class MessageCache(BaseComponent):
     """
@@ -86,6 +86,7 @@ class MessageCache(BaseComponent):
         self.latlon = (location.lat, location.lon)
         self.county_fips = location.fips
         self.message_scores = message_scores
+        self.__old_score = 0
 
         if sorter is not None:
             self.sorter = sorter
@@ -142,7 +143,9 @@ class MessageCache(BaseComponent):
                 for m in active:
                     score = max(score, self.message_scores.get(m.get_event_type(), 0) + score_adj)
 
-        self.fireEvent(new_score(score))
+        if score != self.__old_score:
+            self.fireEvent(new_score(score))
+            self.__old_score = score
 
     def get_active_messages(self, event_pattern=None, here=True):
         """
