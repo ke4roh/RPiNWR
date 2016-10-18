@@ -55,12 +55,13 @@ class TestAlertTimer(unittest.TestCase):
         t[0] = 2
         # Now fire an alert
         at.new_score(40)
+        self.assertEqual(1, len(events))
+        self.assertEqual("begin_alert", events[0].name)
+        events.clear()
         genevent = MockGenerateEvent()
         at.generate_events(genevent)
         self.assertEqual(2, genevent.lastrtl)  # double for the first one
-        self.assertEqual(1, len(events))
-        self.assertEqual("BeginAlert", events[0].name)
-        events.clear()
+        self.assertEqual(0, len(events))
 
         # And check for double the delay after the first
         t[0] = 3
@@ -72,7 +73,7 @@ class TestAlertTimer(unittest.TestCase):
         at.generate_events(genevent)
         self.assertEqual(1, genevent.lastrtl)
         self.assertEqual(1, len(events))
-        self.assertEqual("ContinueAlert", events[0].name)
+        self.assertEqual("continue_alert", events[0].name)
         events.clear()
 
         t[0] = 4.5
@@ -84,13 +85,13 @@ class TestAlertTimer(unittest.TestCase):
         at.generate_events(genevent)
         self.assertEqual(1, genevent.lastrtl)
         self.assertEqual(1, len(events))
-        self.assertEqual("ContinueAlert", events[0].name)
+        self.assertEqual("continue_alert", events[0].name)
         events.clear()
 
         t[0] = 5.5
         at.new_score(30)
         self.assertEqual(1, len(events))
-        self.assertEqual("AllClear", events[0].name)
+        self.assertEqual("all_clear", events[0].name)
         events.clear()
         at.generate_events(genevent)
         self.assertEqual(1, genevent.lastrtl)

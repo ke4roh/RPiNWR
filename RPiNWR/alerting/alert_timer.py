@@ -33,10 +33,10 @@ class AlertTimer(Component):
         old_level = self.current_level
         self.current_level = score
         if old_level < self.alerting_level <= score:
-            self.fire(BeginAlert())
+            self.fire(begin_alert())
             self.last_alert = self.clock() + self.continuation_reminder_interval_sec
         elif old_level >= self.alerting_level > score:
-            self.fire(AllClear())
+            self.fire(all_clear())
             self.last_alert = 0
 
     def generate_events(self, event):
@@ -46,17 +46,17 @@ class AlertTimer(Component):
 
         if self.current_level >= self.alerting_level and self.clock() >= self.last_alert + self.continuation_reminder_interval_sec:
             self.last_alert = self.clock()
-            self.fire(ContinueAlert())
+            self.fire(continue_alert())
         event.reduce_time_left(self.last_alert + self.continuation_reminder_interval_sec - self.clock())
 
 
-class BeginAlert(Event):
+class begin_alert(Event):
     pass
 
 
-class ContinueAlert(Event):
+class continue_alert(Event):
     pass
 
 
-class AllClear(Event):
+class all_clear(Event):
     pass
