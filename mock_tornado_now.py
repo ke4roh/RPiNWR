@@ -71,30 +71,27 @@ def time_string(t):
         t = t[1:]
     return t
 
+def vtec_date(dt):
+    return dt.strftime("%y%m%dT%H%MZ")
+
+def pvtec(vtec, vtec_start, vtec_end):
+    vtec_arr = vtec.split('.')
+    new_vtec = '.'.join(vtec_arr[0:6])
+    new_vtec += '.' + vtec_start + '-' + vtec_end + '/'
+    return new_vtec
+
 def mock_tornado_now(basis):
     arr = basis.split("\n")
     f = sys.stdout
-    t = datetime.now()
-    t_end = t + timedelta(minutes=3)
-    s_now = time_string(t.strftime("%I%M %p EDT %a %b %d").upper())
-    s_end = time_string(t_end.strftime("%I%M %p EDT").upper())
-    s_track = time_string(t.strftime("%I%M %p").upper())
-    for i in range(len(arr)):
-        if i == 11:
-            f.write(s_now + "\n")
-        elif i == 23:
-            f.write("* UNTIL " + s_end + "\n")
-        elif i == 25:
-            arr_i = arr[i].split(" ")
-            for a in range(len(arr_i)):
-                if a == 2:
-                    f.write(s_track + " ")
-                elif 2 < a < 4:
-                    pass
-                else:
-                    f.write(arr_i[a] + " ")
-            f.write("\n")
-        else:
-            f.write(arr[i] + "\n")
+    t_start = datetime.now()
+    t_end = t_start + timedelta(minutes=3)
+    vtec_start = vtec_date(datetime.utcnow())
+    vtec_end = vtec_date(datetime.utcnow() + timedelta(minutes=3))
+    new_pvtec = pvtec(arr[5], vtec_start, vtec_end)
+    arr[5] = new_pvtec
+    arr[11] = time_string(t_start.strftime("%I%M %p EDT %a %b %d").upper())
+    arr[23] = "* UNTIL " + time_string(t_end.strftime("%I%M %p EDT").upper())
+    arr[25] = "* AT " +  time_string(t_start.strftime("%I%M %p").upper()) + arr[25][11::]
+    f.write('\n'.join(arr))
 
 mock_tornado_now(basis)
