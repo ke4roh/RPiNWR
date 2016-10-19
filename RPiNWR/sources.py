@@ -207,7 +207,7 @@ class FolderMonitor(AlertSource):
         self.last_status_time = 0
 
     @handler("stopped")
-    def stopped(self):
+    def stopped(self, manager):
         self.observer.stop()
         self.observer.join()
 

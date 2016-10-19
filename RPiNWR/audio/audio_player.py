@@ -41,3 +41,7 @@ class AudioPlayer(Component):
 
     def all_clear(self):
         self.__play_sound(os.path.join(self.audio_path, "all_clear.ogg"))
+
+    def stopped(self, manager):
+        self.channel = None
+        pygame.mixer.quit()
