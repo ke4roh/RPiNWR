@@ -32,8 +32,9 @@ location = {
     'firewxzone': 'NCZ183'
 }
 
-box = Radio_Component("--transmitter WXL58") + Radio_Squelch() + TextPull(location) + \
-      FolderMonitor(location, "drpozone") + AlertTimer() + MessageCache(location) + Debugger() + AudioPlayer()
+#Radio_Component("--transmitter WXL58") + Radio_Squelch() + TextPull(location) + \
+box = FolderMonitor(location, "dropzone") + AlertTimer() + MessageCache(location) + Debugger() + AudioPlayer()
+
 # TODO add test facility
 # TODO add web server to display status
 # TODO add health check & alerting for radio

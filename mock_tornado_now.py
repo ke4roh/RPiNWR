@@ -89,7 +89,7 @@ def mock_tornado_now(basis):
     vtec_end = vtec_date(datetime.utcnow() + timedelta(minutes=3))
     new_pvtec = pvtec(arr[5], vtec_start, vtec_end)
     arr[5] = new_pvtec
-    arr[11] = time_string(t_start.strftime("%I%M %p EDT %a %b %d").upper())
+    arr[11] = time_string(t_start.strftime("%I%M %p EDT %a %b %d %Y").upper())
     arr[23] = "* UNTIL " + time_string(t_end.strftime("%I%M %p EDT").upper())
     arr[25] = "* AT " +  time_string(t_start.strftime("%I%M %p").upper()) + arr[25][11::]
     f.write('\n'.join(arr))

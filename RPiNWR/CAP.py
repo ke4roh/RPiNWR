@@ -91,17 +91,6 @@ class CAPMessage(CommonMessage):
     def get_areas(self):
         return self.FIPS6
 
-    def applies_to_fips(self, fips):
-        if not self.FIPS6:
-            return False
-        if fips.startswith('0'):
-            fips = '.' + fips[1:]
-        else:
-            fips = '[0' + fips[0] + ']' + fips[1:]
-        fips = '^' + fips + '$'
-        fp = re.compile(fips)
-        return len(list(filter(lambda c: fp.match(c), self.FIPS6))) > 0
-
 
 class NOVTEC(VTEC):
     """

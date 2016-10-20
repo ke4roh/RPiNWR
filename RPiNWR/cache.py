@@ -83,8 +83,11 @@ class MessageCache(BaseComponent):
         self.__messages_lock = threading.Lock()
         self.__messages = {}
         self.__local_messages = []
-        self.latlon = (location.lat, location.lon)
-        self.county_fips = location.fips
+        self.latlon = (location['lat'], location['lon'])
+        try:
+            self.county_fips = location['fips6']
+        except KeyError:
+            self.county_fips = location['fips']
         self.message_scores = message_scores
         self.__old_score = 0
 

@@ -150,7 +150,7 @@ EKSTER
             """)
         nm = mockmonitor.wait_for_n_events(1, lambda x: x[0].name == "new_message", 2)
         self.assertEqual(1, len(nm))
-        self.assertEqual("/O.NEW.KGYX.SV.W.0082.160723T2016Z-160723T2100Z/", nm[0][1][0][0].vtec[0].raw)
+        self.assertEqual("/O.NEW.KGYX.SV.W.0082.160723T2016Z-160723T2100Z/", nm[0][1][0].raw)
 
 
 class TestTextPull(ManagerTest):

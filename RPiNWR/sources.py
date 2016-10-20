@@ -224,8 +224,8 @@ class FolderMonitor(AlertSource):
             tmsg = NWSText.factory(msg)
             if len(tmsg):
                 for m in tmsg:
-                    if len(m.vtec) > 0:
-                        self.fireEvent(new_message(tmsg))
+                    for v in m.vtec:
+                        self.fireEvent(new_message(v))
                         # TODO os.remove(f) - except folders
 
 

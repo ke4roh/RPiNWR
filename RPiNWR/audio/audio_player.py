@@ -23,15 +23,16 @@ import os.path
 
 class AudioPlayer(Component):
     def __init__(self, audio_path="RPiNWR/audio/"):
-        self.channel = None
+        self.audio_channel = None
         self.audio_path = audio_path
+        super().__init__()
 
     def __play_sound(self, sound_file):
         if not pygame.mixer.get_init():
             pygame.mixer.init()
-        if self.channel is None:
-            self.channel = pygame.mixer.find_channel()
-        self.channel.queue(pygame.mixer.Sound(sound_file))
+        if self.audio_channel is None:
+            self.audio_channel = pygame.mixer.find_channel()
+        self.audio_channel.queue(pygame.mixer.Sound(sound_file))
 
     def begin_alert(self):
         self.__play_sound(os.path.join(self.audio_path, "begin_alert.ogg"))

@@ -127,6 +127,9 @@ class NWSText(CommonMessage):
 
         self.vtec = VTEC.VTEC(vms, self)
 
+    def get_areas(self):
+        return self.FIPS6
+
 
 def applies_to_fips(self, fips):
     if fips.sub("^\d", "0") in self.FIPS6:
