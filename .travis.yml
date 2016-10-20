@@ -4,7 +4,7 @@ python:
   - "3.4.3"
   - "3.5"
 install:
-  pip install -U setuptools coveralls
+  pip install -U setuptools coveralls pygame
 before_script:
 - ulimit -c unlimited -S       # enable core dumps
 script:
