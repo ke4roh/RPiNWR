@@ -18,21 +18,15 @@ __author__ = 'ke4roh'
 
 import unittest
 import time
-import threading
-from RPiNWR.Si4707.events import SAMEMessageReceivedEvent, EndOfMessage
-from RPiNWR.demo import Radio
 import os
-import errno
-#from .radio_component import Radio_Component
-#from .radio_squelch import Radio_Squelch
 from RPiNWR.sources import TextPull, FolderMonitor
 from RPiNWR.cache import MessageCache
 from circuits import Debugger
 from RPiNWR.alerting import AlertTimer
-from RPiNWR.audio import AudioPlayer
 import threading
 import re
 import shutil
+
 
 class DummyLogger(object):
     def __init__(self):
@@ -40,23 +34,23 @@ class DummyLogger(object):
         self.error_history = []
         self.debug_lock = threading.Condition()
 
-    def debug(self,s):
+    def debug(self, s):
         with self.debug_lock:
             self.debug_history.append(s)
             self.debug_lock.notify_all()
-    
-    def error(self,s):
+
+    def error(self, s):
         self.error_history.append(s)
 
     def wait_for_n_events(self, n, pattern, timeout):
         timeout = time.time() + timeout
-        while len([filter(lambda x: pattern.match(x), self.debug_history)]) < n: 
+        while len([filter(lambda x: pattern.match(x), self.debug_history)]) < n:
             now = time.time()
             if now > timeout:
                 raise TimeoutError()
             with self.debug_lock:
                 self.debug_lock.wait(timeout - now)
-                        
+
 
 class TestIntegration(unittest.TestCase):
     def setUp(self):
@@ -76,24 +70,25 @@ class TestIntegration(unittest.TestCase):
             'firewxzone': 'NCZ183'
         }
         logger = DummyLogger()
-        
+
         if not os.path.exists("dropzone"):
             os.makedirs("dropzone")
         t = [1302983940]
-        self.box = box = FolderMonitor(location, "dropzone", .5) + AlertTimer(clock=lambda: t[0]) + MessageCache(location, clock=lambda: t[0]) + Debugger(logger=logger)
+        self.box = box = FolderMonitor(location, "dropzone", .5) + AlertTimer(clock=lambda: t[0]) + MessageCache(
+            location, clock=lambda: t[0]) + Debugger(logger=logger)
         box.start()
-        
-        logger.wait_for_n_events(1, re.compile('<started.*'),5)
-        
-        shutil.copyfile(os.path.join(os.path.dirname(os.path.realpath(__file__)),"KRAH.TO.W.0023.2011.txt"), 'dropzone/tow')
 
-        logger.wait_for_n_events(1, re.compile('<begin_alert.*'),2)
+        logger.wait_for_n_events(1, re.compile('<started.*'), 5)
+
+        shutil.copyfile(os.path.join(os.path.dirname(os.path.realpath(__file__)), "KRAH.TO.W.0023.2011.txt"),
+                        'dropzone/tow')
+
+        logger.wait_for_n_events(1, re.compile('<begin_alert.*'), 2)
         t[0] += 120
         logger.wait_for_n_events(1, re.compile('<continue_alert.*'), 2)
 
-        t[0] += 60*45
+        t[0] += 60 * 45
         logger.wait_for_n_events(1, re.compile('<all_clear.*'), 2)
-        
+
         self.assertEquals(0, len(logger.error_history), str(logger.error_history))
         #self.assertTrue(len(logger.debug_history) < 20, str(logger.debug_history))
-
