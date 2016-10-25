@@ -19,9 +19,9 @@ Here's what you need to do to turn this repository into something that works for
 
 ### Parts list
 You need  a few parts:
-* Raspberry Pi 3B+
-* AIWIndustries Weather Radio receiver board + accessories (antenna, case, volume knob)
-* 8GB+ SD card
+* Raspberry Pi 3B
+* (http://www.aiwindustries.com/store/p9/Raspberry_Pi_B_%2F2_NWR_Receiver%2FSAME_Decoder.html)[AIWIndustries Weather Radio receiver board] + accessories (antenna, case, volume knob)
+* 8GB+ micro SD card
 * USB power supply
 
 ### Installation steps
@@ -58,6 +58,9 @@ At the moment, this radio implementation lets you subscribe to events
 and observe status of the radio over time.  Further development will
 add functionality and bring the demo code up to a more practical 
 implementation.  
+
+## Where is the internet message stuff and tornado-only alerting?
+It's on the dev branch.  It's fresh, really fresh.  So you're encouraged to help with development and testing or just to try it out, but the examples there aren't fully baked yet or else they'd be on the master branch!  As of October 24, 2016, It's pretty close, so stay tuned.
 
 ## Helping
 Check out the issues in WaffleIO:
