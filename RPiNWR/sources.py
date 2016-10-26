@@ -96,7 +96,8 @@ class TextPull(AlertSource):
                 del loc['fips6']
 
             self.timer = Timer(interval=60,
-                               event=request("GET", self.url + 'showsigwx.php?' + urlencode(loc)),
+                               event=request("GET", self.url + 'showsigwx.php?' + urlencode(loc),
+                                             headers={'Accept': '*/*', 'User-Agent': 'RPiNWR/0.0.1'}),
                                persist=True, channel=self.channel)
             self.timer.register(self)
 

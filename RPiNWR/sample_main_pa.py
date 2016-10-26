@@ -32,7 +32,7 @@ location = {
     'firewxzone': 'NCZ183'
 }
 
-#Radio_Component("--transmitter WXL58") + Radio_Squelch() + TextPull(location) + \
+#Radio_Component("--transmitter WXL58".split()) + Radio_Squelch() + TextPull(location) + \
 box = FolderMonitor(location, "dropzone") + AlertTimer() + MessageCache(location) + Debugger() + AudioPlayer()
 
 # TODO add test facility

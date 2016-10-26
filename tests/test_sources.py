@@ -186,12 +186,18 @@ class TestTextPull(ManagerTest):
             body = f.read()
 
         class Root(Controller):
+            def __init__(self):
+                self.received_headers = []
+                super().__init__()
+
             @expose("showsigwx.php")
             def index(self, *args, **kwargs):
+                self.received_headers.append(self.request.headers)
                 return body
 
         mockmonitor = Watcher()
-        self.manager.append((Server(("0.0.0.0", 9000)) + Root() + mockmonitor))
+        mockroot = Root()
+        self.manager.append((Server(("0.0.0.0", 9000)) + mockroot + mockmonitor))
         self.manager[-1].start()
         mockmonitor.wait_for_n_events(1, lambda x: x[0].name == "ready", .5)
         # End mock server
@@ -212,3 +218,6 @@ class TestTextPull(ManagerTest):
         time.sleep(.5)
 
         self.assertEqual(5, len(list(filter(lambda x: x[0].name == "new_message", sw.events))))
+        for h in mockroot.received_headers:
+            self.assertEquals('*/*', h['Accept'])
+            self.assertEquals('RPiNWR/0.0.1',h['User-Agent'])

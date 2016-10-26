@@ -108,12 +108,13 @@ class AIWIBoardContext(Context):
                         self.__exit__(None, None, None)
                         deleg(signum, stack)
 
-                    signal.signal(sig, delegate)
                 else:
                     def delegate(signum, stack):
                         self.__exit__(None, None, None)
-
+                try:
                     signal.signal(sig, delegate)
+                except ValueError:
+                    pass  # not running from main thread?  Is this signal stuff necessary?
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
