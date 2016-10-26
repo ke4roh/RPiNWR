@@ -34,7 +34,7 @@ You need  a few parts:
 
 ```bash
 sudo apt-get update
-sudo apt-get install git python-dev python-smbus i2c-tools python-rpi.gpio python3-rpi.gpio
+sudo apt-get install git python-dev python-smbus i2c-tools python-rpi.gpio python3-rpi.gpio libxml2-dev libxslt1-dev python-shapely
 # Follow instructions to install i2c kernel support:
 #   https://learn.adafruit.com/adafruits-raspberry-pi-lesson-4-gpio-setup/configuring-i2c
 git clone https://github.com/nioinnovation/Adafruit_Python_GPIO.git
