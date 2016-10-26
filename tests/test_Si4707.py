@@ -213,7 +213,7 @@ class TestSi4707(unittest.TestCase):
                 self.assertEquals(2, len(alert_tones))
                 self.assertTrue(alert_tones[0].tone_on)
                 self.assertFalse(alert_tones[1].tone_on)
-                self.assertTrue(abs(alert_tones[1].duration - .8) < 0.01)
+                self.assertTrue(abs(alert_tones[1].duration - .8) < 0.08, alert_tones[1].duration)
 
                 # Test EOM
                 self.assertEquals(1, len(list(filter(lambda x: type(x) is EndOfMessage, events))))
