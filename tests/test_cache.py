@@ -25,6 +25,7 @@ from RPiNWR.CommonMessage import new_message
 from test_sources import Watcher
 from circuits import Component, Debugger
 import time
+import re
 
 
 class ScoreWatcher(Component):
@@ -34,6 +35,71 @@ class ScoreWatcher(Component):
 
     def new_score(self, score):
         self.score = score
+
+
+class MockAlerter(Component):
+    """
+    This component injects messages for testing purposes and keeps a clock.
+    """
+
+    def __init__(self, alerts):
+        self.alerts = alerts
+        self.clock = alerts[0].get_start_time_sec()  # this will report the time of the latest event
+        self.aix = 0
+        self.eix = 0
+        super().__init__()
+
+    def generate_events(self, event):
+        event.reduce_time_left(0)
+        while self.aix < len(self.alerts) and self.alerts[self.aix].get_start_time_sec() <= self.clock:
+            self.fire(new_message(self.alerts[self.aix]))
+            self.aix += 1
+        self.clock += 15  # these events are marked by the minute, so 15 sec is 4x as fast as necessary, but it needs
+        # to be smaller slices so that there are enough trips through generate_events to update score etc.
+        if self.clock > self.alerts[-1].get_end_time_sec() + 300:
+            self.fire(shutdown())
+
+    def _time(self):
+        return self.clock
+
+
+class shutdown(Event):
+    """shut down the manager"""
+
+
+class CacheMonitor(BaseComponent):
+    """
+    This component keeps a record of the active messages in the buffer with each change
+    """
+
+    def __init__(self, cache):
+        self.cache = cache
+        self.clock = cache._MessageCache__time
+        self.stats = []
+        self.score = float("nan")
+        super().__init__()
+
+    @handler("update_score", priority=-1000)
+    def update_score(self):
+        ptime = time.strftime("%j %H:%M  ", time.gmtime(self.clock()))
+        here = self.cache.get_active_messages()
+        elsewhere = self.cache.get_active_messages(here=False)
+        stat = ptime + ",".join([x.get_event_type() for x in here]) \
+               + " --- " + ",".join([x.get_event_type() for x in elsewhere]) \
+               + " / " + str(self.score)
+        if len(self.stats) and self.stats[-1].startswith(ptime):
+            self.stats[-1] = stat.strip()
+        else:
+            self.stats.append(stat.strip())
+
+    @handler("new_score")
+    def new_score(self, score):
+        self.score = score
+        self.update_score()
+
+    @handler("shutdown")
+    def shutdown(self):
+        self.stop()
 
 
 class TestCache(unittest.TestCase):
@@ -72,417 +138,54 @@ class TestCache(unittest.TestCase):
         ]]
 
         expected = """123 20:03  SVR --- SVR / 30
-    123 20:08  SVR --- SVR / 30
-    123 20:13  SVR --- SVR / 30
-    123 20:18  SVR --- SVR / 30
-    123 20:23  SVR --- SVR,SVR / 30
-    123 20:28  SVR --- SVR,SVR,SVR / 30
-    123 20:33  SVR --- SVR,SVR / 30
-    123 20:38  SVR --- SVR,SVR / 30
-    123 20:43  SVR --- SVR,SVR / 30
-    123 20:48  SVR --- SVR,SVR / 30
-    123 20:53  SVR --- SVR,SVR / 30
-    123 20:58  SVR --- SVR,SVR / 30
-    123 21:03  SVR --- SVR,SVR / 30
-    123 21:08  SVR --- SVR / 30
-    123 21:13  SVR --- SVR,SVR / 30
-    123 21:18  SVR --- SVR,SVR,SVR / 30
-    123 21:23  SVR --- SVR,SVR,SVR / 30
-    123 21:28  SVR --- SVR,SVR / 30
-    123 21:33   --- SVR,SVR / 20
-    123 21:38   --- SVR,SVR / 20
-    123 21:43   --- SVR,SVR / 20
-    123 21:48   --- SVR,SVR / 20
-    123 21:53   --- SVR,SVR / 20
-    123 21:58   --- SVR / 20
-    123 22:03   ---  / 0
-    123 22:08   ---  / 0
-    123 22:13   --- FFW / 0
-    123 22:18   --- FFW / 0
-    123 22:23   --- FFW / 0
-    123 22:28   --- FFW / 0
-    123 22:33   --- FFW / 0
-    123 22:38   --- FFW / 0
-    123 22:43   --- FFW / 0
-    123 22:48   --- FFW / 0
-    123 22:53   --- FFW / 0
-    123 22:58   --- FFW / 0
-    123 23:03   --- FFW / 0
-    123 23:08   --- FFW / 0
-    123 23:13   --- FFW / 0
-    123 23:18   --- FFW / 0
-    123 23:23   --- FFW / 0
-    123 23:28   --- FFW / 0
-    123 23:33   --- FFW / 0
-    123 23:38   --- FFW / 0
-    123 23:43   --- FFW / 0
-    123 23:48   --- FFW / 0
-    123 23:53   --- FFW / 0
-    123 23:58   --- FFW / 0
-    124 00:03   --- FFW / 0
-    124 00:08   --- FFW / 0
-    124 00:13   --- FFW / 0
-    124 00:18   --- FFW / 0
-    124 00:23   --- FFW / 0
-    124 00:28   --- FFW / 0
-    124 00:33   --- FFW / 0
-    124 00:38   --- FFW / 0
-    124 00:43   --- FFW / 0
-    124 00:48   --- FFW / 0
-    124 00:53   --- FFW / 0
-    124 00:58   --- FFW / 0
-    124 01:03   --- FFW / 0
-    124 01:08   --- FFW / 0
-    124 01:13   ---  / 0
-    124 01:18   ---  / 0
-    124 01:23   ---  / 0
-    124 01:28   ---  / 0
-    124 01:33   ---  / 0
-    124 01:38   ---  / 0
-    124 01:43   ---  / 0
-    124 01:48   ---  / 0
-    124 01:53   ---  / 0
-    124 01:58   ---  / 0
-    124 02:03   ---  / 0
-    124 02:08   ---  / 0
-    124 02:13   ---  / 0
-    124 02:18   ---  / 0
-    124 02:23   ---  / 0
-    124 02:28   ---  / 0
-    124 02:33   ---  / 0
-    124 02:38   ---  / 0
-    124 02:43   ---  / 0
-    124 02:48   ---  / 0
-    124 02:53   ---  / 0
-    124 02:58   ---  / 0
-    124 03:03   ---  / 0
-    124 03:08   ---  / 0
-    124 03:13   ---  / 0
-    124 03:18   ---  / 0
-    124 03:23   ---  / 0
-    124 03:28   ---  / 0
-    124 03:33   ---  / 0
-    124 03:38   ---  / 0
-    124 03:43   ---  / 0
-    124 03:48   ---  / 0
-    124 03:53   ---  / 0
-    124 03:58   ---  / 0
-    124 04:03   ---  / 0
-    124 04:08   ---  / 0
-    124 04:13   ---  / 0
-    124 04:18   ---  / 0
-    124 04:23   ---  / 0
-    124 04:28   ---  / 0
-    124 04:33   ---  / 0
-    124 04:38   ---  / 0
-    124 04:43   ---  / 0
-    124 04:48   ---  / 0
-    124 04:53   ---  / 0
-    124 04:58   ---  / 0
-    124 05:03   ---  / 0
-    124 05:08   ---  / 0
-    124 05:13   ---  / 0
-    124 05:18   ---  / 0
-    124 05:23   ---  / 0
-    124 05:28   ---  / 0
-    124 05:33   ---  / 0
-    124 05:38   ---  / 0
-    124 05:43   ---  / 0
-    124 05:48   ---  / 0
-    124 05:53   ---  / 0
-    124 05:58   ---  / 0
-    124 06:03   ---  / 0
-    124 06:08   ---  / 0
-    124 06:13   ---  / 0
-    124 06:18   ---  / 0
-    124 06:23   ---  / 0
-    124 06:28   ---  / 0
-    124 06:33   ---  / 0
-    124 06:38   ---  / 0
-    124 06:43   ---  / 0
-    124 06:48   ---  / 0
-    124 06:53   ---  / 0
-    124 06:58   ---  / 0
-    124 07:03   ---  / 0
-    124 07:08   ---  / 0
-    124 07:13   ---  / 0
-    124 07:18   ---  / 0
-    124 07:23   ---  / 0
-    124 07:28   ---  / 0
-    124 07:33   ---  / 0
-    124 07:38   ---  / 0
-    124 07:43   ---  / 0
-    124 07:48   ---  / 0
-    124 07:53   ---  / 0
-    124 07:58   ---  / 0
-    124 08:03   ---  / 0
-    124 08:08   ---  / 0
-    124 08:13   ---  / 0
-    124 08:18   ---  / 0
-    124 08:23   ---  / 0
-    124 08:28   ---  / 0
-    124 08:33   ---  / 0
-    124 08:38   ---  / 0
-    124 08:43   ---  / 0
-    124 08:48   ---  / 0
-    124 08:53   ---  / 0
-    124 08:58   ---  / 0
-    124 09:03   ---  / 0
-    124 09:08   ---  / 0
-    124 09:13   ---  / 0
-    124 09:18   ---  / 0
-    124 09:23   ---  / 0
-    124 09:28   ---  / 0
-    124 09:33   ---  / 0
-    124 09:38   ---  / 0
-    124 09:43   ---  / 0
-    124 09:48   ---  / 0
-    124 09:53   ---  / 0
-    124 09:58   ---  / 0
-    124 10:03   ---  / 0
-    124 10:08   ---  / 0
-    124 10:13   ---  / 0
-    124 10:18   ---  / 0
-    124 10:23   ---  / 0
-    124 10:28   ---  / 0
-    124 10:33   ---  / 0
-    124 10:38   ---  / 0
-    124 10:43   ---  / 0
-    124 10:48   ---  / 0
-    124 10:53   ---  / 0
-    124 10:58   ---  / 0
-    124 11:03   ---  / 0
-    124 11:08   ---  / 0
-    124 11:13   ---  / 0
-    124 11:18   ---  / 0
-    124 11:23   ---  / 0
-    124 11:28   ---  / 0
-    124 11:33   ---  / 0
-    124 11:38   ---  / 0
-    124 11:43   ---  / 0
-    124 11:48   ---  / 0
-    124 11:53   ---  / 0
-    124 11:58   ---  / 0
-    124 12:03   ---  / 0
-    124 12:08   ---  / 0
-    124 12:13   ---  / 0
-    124 12:18   ---  / 0
-    124 12:23   ---  / 0
-    124 12:28   ---  / 0
-    124 12:33   ---  / 0
-    124 12:38   ---  / 0
-    124 12:43   ---  / 0
-    124 12:48   ---  / 0
-    124 12:53   ---  / 0
-    124 12:58   ---  / 0
-    124 13:03   ---  / 0
-    124 13:08   ---  / 0
-    124 13:13   ---  / 0
-    124 13:18   ---  / 0
-    124 13:23   ---  / 0
-    124 13:28   ---  / 0
-    124 13:33   ---  / 0
-    124 13:38   ---  / 0
-    124 13:43   ---  / 0
-    124 13:48   ---  / 0
-    124 13:53   ---  / 0
-    124 13:58   ---  / 0
-    124 14:03   ---  / 0
-    124 14:08   ---  / 0
-    124 14:13   ---  / 0
-    124 14:18   ---  / 0
-    124 14:23   ---  / 0
-    124 14:28   ---  / 0
-    124 14:33   ---  / 0
-    124 14:38   ---  / 0
-    124 14:43   ---  / 0
-    124 14:48   ---  / 0
-    124 14:53   ---  / 0
-    124 14:58   ---  / 0
-    124 15:03   ---  / 0
-    124 15:08   ---  / 0
-    124 15:13   ---  / 0
-    124 15:18   ---  / 0
-    124 15:23   ---  / 0
-    124 15:28   ---  / 0
-    124 15:33   ---  / 0
-    124 15:38   ---  / 0
-    124 15:43   ---  / 0
-    124 15:48   ---  / 0
-    124 15:53   ---  / 0
-    124 15:58   ---  / 0
-    124 16:03   ---  / 0
-    124 16:08   ---  / 0
-    124 16:13   ---  / 0
-    124 16:18   ---  / 0
-    124 16:23   ---  / 0
-    124 16:28   ---  / 0
-    124 16:33   ---  / 0
-    124 16:38   ---  / 0
-    124 16:43   ---  / 0
-    124 16:48   ---  / 0
-    124 16:53   ---  / 0
-    124 16:58   ---  / 0
-    124 17:03   ---  / 0
-    124 17:08   ---  / 0
-    124 17:13   ---  / 0
-    124 17:18   ---  / 0
-    124 17:23   ---  / 0
-    124 17:28   ---  / 0
-    124 17:33   ---  / 0
-    124 17:38   ---  / 0
-    124 17:43   ---  / 0
-    124 17:48   ---  / 0
-    124 17:53   ---  / 0
-    124 17:58   ---  / 0
-    124 18:03   ---  / 0
-    124 18:08   ---  / 0
-    124 18:13   ---  / 0
-    124 18:18   ---  / 0
-    124 18:23   ---  / 0
-    124 18:28   ---  / 0
-    124 18:33   ---  / 0
-    124 18:38   ---  / 0
-    124 18:43   ---  / 0
-    124 18:48   ---  / 0
-    124 18:53   ---  / 0
-    124 18:58  SVA ---  / 20
-    124 19:03  SVA ---  / 20
-    124 19:08  SVA ---  / 20
-    124 19:13  SVA ---  / 20
-    124 19:18  SVA ---  / 20
-    124 19:23  SVA ---  / 20
-    124 19:28  SVA ---  / 20
-    124 19:33  SVA ---  / 20
-    124 19:38  SVA ---  / 20
-    124 19:43  SVA ---  / 20
-    124 19:48  SVA ---  / 20
-    124 19:53  SVA ---  / 20
-    124 19:58  SVA ---  / 20
-    124 20:03  SVA ---  / 20
-    124 20:08  SVA ---  / 20
-    124 20:13  SVA --- SVR / 20
-    124 20:18  SVA --- SVR / 20
-    124 20:23  SVA --- SVR / 20
-    124 20:28  SVA --- SVR / 20
-    124 20:33  SVA --- SVR / 20
-    124 20:38  SVA --- SVR / 20
-    124 20:43  SVA --- SVR / 20
-    124 20:48  SVA --- SVR,SVR / 20
-    124 20:53  SVA --- SVR,SVR / 20
-    124 20:58  SVA --- SVR / 20
-    124 21:03  SVA --- SVR / 20
-    124 21:08  SVA --- SVR / 20
-    124 21:13  SVA --- SVR / 20
-    124 21:18  SVA --- SVR / 20
-    124 21:23  SVR,SVA --- SVR / 30
-    124 21:28  SVR,SVA --- SVR / 30
-    124 21:33  SVR,SVA --- SVR / 30
-    124 21:38  SVR,SVA --- SVR / 30
-    124 21:43  SVR,SVA --- SVR / 30
-    124 21:48  SVR,SVA ---  / 30
-    124 21:53  SVR,SVA ---  / 30
-    124 21:58  SVR,SVR,SVA ---  / 30
-    124 22:03  SVR,SVR,SVA ---  / 30
-    124 22:08  TOR,SVR,SVA ---  / 40
-    124 22:13  TOR,SVR,SVA ---  / 40
-    124 22:18  TOR,SVR,SVA ---  / 40
-    124 22:23  SVR,SVA ---  / 30
-    124 22:28  SVR,SVA ---  / 30
-    124 22:33  SVR,SVA ---  / 30
-    124 22:38  SVR,SVR,SVA ---  / 30
-    124 22:43  SVR,SVR,SVA ---  / 30
-    124 22:48  SVR,SVR,SVA ---  / 30
-    124 22:53  SVR,SVR,SVA ---  / 30
-    124 22:58  SVR,SVA ---  / 30
-    124 23:03  SVR,SVA ---  / 30
-    124 23:08  SVR,SVA ---  / 30
-    124 23:13  SVR,SVA ---  / 30
-    124 23:18  SVR,SVA ---  / 30
-    124 23:23  SVR,SVA ---  / 30
-    124 23:28  SVR,SVA ---  / 30
-    124 23:33  SVR,SVA ---  / 30
-    124 23:38  SVA ---  / 20
-    124 23:43  SVA --- SVR / 20
-    124 23:48  SVA --- SVR / 20
-    124 23:53  SVA --- SVR / 20
-    124 23:58  SVA --- SVR / 20
-    125 00:03  SVA --- SVR / 20
-    125 00:08  SVA --- SVR / 20
-    125 00:13  SVA --- SVR,SVR / 20
-    125 00:18  SVA --- SVR,SVR / 20
-    125 00:23  SVA --- SVR,SVR / 20
-    125 00:28  SVA --- SVR,SVR / 20
-    125 00:33  SVA --- SVR,SVR,SVR / 20
-    125 00:38  SVA --- SVR,SVR,SVR / 20
-    125 00:43  SVA --- SVR,SVR / 20
-    125 00:48  SVA --- SVR,SVR / 20
-    125 00:53  SVA --- SVR,SVR / 20
-    125 00:58   --- SVR,SVR / 20
-    125 01:03   --- SVR,SVR / 20
-    125 01:08   --- SVR,SVR / 20
-    125 01:13   --- SVR / 20
-    125 01:18   --- SVR / 20
-    125 01:23   --- SVR / 20
-    125 01:28   --- SVR / 20
-    125 01:33   ---  / 0
-    125 01:38   ---  / 0
-    125 01:43   ---  / 0
-    125 01:48   ---  / 0
-    125 01:53  SVR ---  / 30
-    125 01:58  SVR ---  / 30
-    125 02:03  SVR ---  / 30
-    125 02:08  SVR ---  / 30
-    125 02:13  SVR ---  / 30
-    125 02:18  SVR --- SVR  / 30
-    125 02:23  SVR --- SVR / 30
-    125 02:28  SVR --- SVR / 30
-    125 02:33  SVR --- SVR / 30
-    125 02:38  SVR --- SVR / 30
-    125 02:43  SVR --- SVR / 30
-    125 02:48  SVR --- SVR / 30
-    125 02:53   --- SVR / 20
-    125 02:58   --- SVR / 20
-    125 03:03   --- SVR / 20
-    125 03:08   --- SVR / 20
-    125 03:13   --- SVR / 20
-    125 03:18   ---  / 0
-    125 03:23   ---  / 0
-    125 03:28   ---  / 0
-    125 03:33   ---  / 0
-    """.split("\n")
+            123 20:23  SVR --- SVR,SVR / 30
+            123 20:28  SVR --- SVR,SVR,SVR / 30
+            123 20:33  SVR --- SVR,SVR / 30
+            123 20:45  SVR,SVR --- SVR,SVR / 30
+            123 20:48  SVR --- SVR,SVR / 30
+            123 21:08  SVR --- SVR / 30
+            123 21:10  SVR --- SVR,SVR / 30
+            123 21:16  SVR --- SVR,SVR,SVR / 30
+            123 21:28  SVR --- SVR,SVR / 30
+            123 21:30   --- SVR,SVR / 20
+            123 21:55   --- SVR / 20
+            123 22:01   ---  / 0
+            123 22:09   --- FFW / 0
+            124 01:09   ---  / 0
+            124 18:54  SVA ---  / 20
+            124 20:11  SVA --- SVR / 20
+            124 20:44  SVA --- SVR,SVR / 20
+            124 20:56  SVA --- SVR / 20
+            124 21:20  SVR,SVA --- SVR / 30
+            124 21:44  SVR,SVA ---  / 30
+            124 21:56  SVR,SVR,SVA ---  / 30
+            124 22:04  TOR,SVR,SVR,SVA ---  / 40
+            124 22:05  TOR,SVR,SVA ---  / 40
+            124 22:19  SVR,SVA ---  / 30
+            124 22:35  SVR,SVR,SVA ---  / 30
+            124 22:56  SVR,SVA ---  / 30
+            124 23:35  SVA ---  / 20
+            124 23:39  SVA --- SVR / 20
+            125 00:11  SVA --- SVR,SVR / 20
+            125 00:29  SVA --- SVR,SVR,SVR / 20
+            125 00:39  SVA --- SVR,SVR / 20
+            125 00:54   --- SVR,SVR / 20
+            125 01:11   --- SVR / 20
+            125 01:29   ---  / 0
+            125 01:53  SVR ---  / 30
+            125 02:18  SVR --- SVR / 30
+            125 02:53   --- SVR / 20
+            125 03:18   ---  / 0""".split("\n")
 
-        t = 0
-        self.manager = buf = MessageCache({'lat': 35.73, 'lon': -78.85, 'fips6': "037183"},
-                                          default_SAME_sort, clock=lambda: t)
-        watcher = Watcher()
-        scorewatcher = ScoreWatcher()
-        (buf + watcher + scorewatcher + Debugger()).start()
-        watcher.wait_for_start()
+        alerter = MockAlerter(alerts)
+        buf = MessageCache({'lat': 35.73, 'lon': -78.85, 'fips6': "037183"},
+                           default_SAME_sort, clock=alerter._time)
+        self.manager = cachemon = CacheMonitor(buf)
+        (cachemon + buf + alerter + Debugger()).run()
+        self.assertEquals(len(expected), len(cachemon.stats))
+        for i in range(0, len(expected)):
+            self.assertEquals(expected[i].strip(), cachemon.stats[i].strip())
 
-        # Iterate through this storm system 5 minutes at a time
-        aix = 0
-        eix = 0
-        for t in range(int(alerts[0].get_start_time_sec()),
-                       int(alerts[-1].get_start_time_sec() + alerts[-1].get_duration_sec() + 1000),
-                       300):
-            change = False
-            while aix < len(alerts) and alerts[aix].get_start_time_sec() <= t:
-                change = True
-                yield buf.callEvent(new_message(alerts[aix]))
-                aix += 1
-            if not change:
-                yield buf.callEvent(update_score())
-
-            ptime = time.strftime("%j %H:%M  ", time.gmtime(t))
-            here = buf.get_active_messages()
-            elsewhere = buf.get_active_messages(here=False)
-            stat = ptime + ",".join([x.get_event_type() for x in here]) \
-                   + " --- " + ",".join([x.get_event_type() for x in elsewhere]) \
-                   + " / " + str(scorewatcher.score)
-
-            self.assertEqual(expected[eix].strip(), stat.strip())
-            eix += 1
 
     def test_net_alerts(self):
         # This is more activity than we'd see in a regular setup because it considers every severe thunderstorm
@@ -515,7 +218,7 @@ class TestCache(unittest.TestCase):
         # https://mesonet.agron.iastate.edu/vtec/#2016-O-NEW-KGLD-TO-W-0029/USCOMP-N0Q-201605250145
 
         t = 0
-        self.manager = buf = MessageCache({"lat":40.321909, "lon":-102.718192, "fips6":"008125"},
+        self.manager = buf = MessageCache({"lat": 40.321909, "lon": -102.718192, "fips6": "008125"},
                                           default_VTEC_sort, clock=lambda: t)
         watcher = Watcher()
         scorewatcher = ScoreWatcher()

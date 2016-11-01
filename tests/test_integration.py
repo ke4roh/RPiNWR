@@ -91,4 +91,4 @@ class TestIntegration(unittest.TestCase):
         logger.wait_for_n_events(1, re.compile('<all_clear.*'), 2)
 
         self.assertEquals(0, len(logger.error_history), str(logger.error_history))
-        #self.assertTrue(len(logger.debug_history) < 20, str(logger.debug_history))
+        self.assertTrue(len(logger.debug_history) < 20, str(logger.debug_history))

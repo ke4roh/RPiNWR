@@ -49,6 +49,7 @@ def by_score_and_time(a, b):
         return delta
     return b.get_start_time_sec() - a.get_start_time_sec()
 
+
 class MessageCache(BaseComponent):
     """
     MessageCache holds a collection of (presumably recent) SAME or VTEC (text/CAP) messages.
@@ -117,8 +118,10 @@ class MessageCache(BaseComponent):
 
     @handler("generate_events")
     def _generate_events(self, event):
-        event.reduce_time_left(max(0, self._get_first_expiry() - self.__time()))
-        if self._get_first_expiry() < self.__time():
+        # Remove expired messages and update scores accordingly afterward
+        first_expiry = self._get_first_expiry()
+        event.reduce_time_left(min(15 * 60, max(0, first_expiry - self.__time())))
+        if first_expiry < self.__time():
             with self.__messages_lock:
                 self.__messages = {k: v for k, v in self.__messages.items() if v.get_end_time_sec() >= self.__time()}
             self.fireEvent(update_score())
@@ -126,10 +129,10 @@ class MessageCache(BaseComponent):
     def _get_first_expiry(self):
         """Return the time (secs since the epoch) at which time the first message will expire"""
         with self.__messages_lock:
-            try:
+            if len(self.__messages):
                 return min([msg.get_end_time_sec() for msg in self.__messages.values()])
-            except ValueError:
-                return 0
+            else:
+                return float("inf")
 
     @handler("update_score")
     def make_new_scores(self):
