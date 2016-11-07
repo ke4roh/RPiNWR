@@ -10,5 +10,3 @@ script:
   coverage run --source=RPiNWR ./setup.py test
 after_success:
   coveralls
-addons:
-  srcclr: true
