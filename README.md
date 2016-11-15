@@ -20,7 +20,7 @@ Here's what you need to do to turn this repository into something that works for
 ### Parts list
 You need  a few parts:
 * Raspberry Pi 3B
-* (http://www.aiwindustries.com/store/p9/Raspberry_Pi_B_%2F2_NWR_Receiver%2FSAME_Decoder.html)[AIWIndustries Weather Radio receiver board] + accessories (antenna, case, volume knob)
+* [AIWIndustries Weather Radio receiver board](http://www.aiwindustries.com/store/p9/Raspberry_Pi_B_%2F2_NWR_Receiver%2FSAME_Decoder.html) + accessories (antenna, case, volume knob)
 * 8GB+ micro SD card
 * USB power supply
 
