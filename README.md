@@ -4,7 +4,7 @@ This library adapts the [Raspberry Pi SAME decoder board](http://www.aiwindustri
 functionality so that you can focus on your application.  It has
 error handling!  It has unit tests!  It has events!  Callbacks!
 
-See the [https://docs.google.com/presentation/d/1nTsBxVldKxCx8PAM8XSf-2OYdHT5qSjltk65oyRk6Xs/edit?usp=sharing](presentation slides).  
+See the [Presentation slides](https://docs.google.com/presentation/d/1nTsBxVldKxCx8PAM8XSf-2OYdHT5qSjltk65oyRk6Xs/edit?usp=sharing).  
 
 ## Build status
 [![build status](https://travis-ci.org/ke4roh/RPiNWR.svg?branch=master)](https://travis-ci.org/ke4roh/RPiNWR/branches)
