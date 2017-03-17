@@ -40,21 +40,21 @@ class TestAlertTimer(unittest.TestCase):
 
         at = AlertTimer(continuation_reminder_interval_sec=1, clock=lambda: t[0])
         at.fire = fire  # override to capture the events
-        at.new_score(20)
+        at.new_score(20, None)
         self.assertEqual(0, len(events))
         genevent = MockGenerateEvent()
         at.generate_events(genevent)
         self.assertEqual(1, genevent.lastrtl)
         self.assertEqual(0, len(events))
         t[0] = 1
-        at.new_score(39)
+        at.new_score(39, None)
         genevent = MockGenerateEvent()
         at.generate_events(genevent)
         self.assertEqual(1, genevent.lastrtl)
         self.assertEqual(0, len(events))
         t[0] = 2
         # Now fire an alert
-        at.new_score(40)
+        at.new_score(40, None)
         self.assertEqual(1, len(events))
         self.assertEqual("begin_alert", events[0].name)
         events.clear()
@@ -89,7 +89,7 @@ class TestAlertTimer(unittest.TestCase):
         events.clear()
 
         t[0] = 5.5
-        at.new_score(30)
+        at.new_score(30, None)
         self.assertEqual(1, len(events))
         self.assertEqual("all_clear", events[0].name)
         events.clear()

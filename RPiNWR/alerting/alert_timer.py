@@ -22,6 +22,11 @@ from time import time
 
 class AlertTimer(Component):
     def __init__(self, continuation_reminder_interval_sec=60, clock=time):
+        """
+
+        :param continuation_reminder_interval_sec: The length of time between "the alert is still in effect" messages
+        :param clock: a function that returns the time, default is time.time
+        """
         self.current_level = 0
         self.last_alert = 0
         self.clock = clock
@@ -29,7 +34,7 @@ class AlertTimer(Component):
         self.continuation_reminder_interval_sec = continuation_reminder_interval_sec
         super().__init__()
 
-    def new_score(self, score):
+    def new_score(self, score, message):
         old_level = self.current_level
         self.current_level = score
         if old_level < self.alerting_level <= score:

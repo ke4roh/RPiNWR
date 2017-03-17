@@ -33,7 +33,7 @@ class ScoreWatcher(Component):
         super().__init__()
         self.score = None
 
-    def new_score(self, score):
+    def new_score(self, score, msg):
         self.score = score
 
 
@@ -80,7 +80,7 @@ class CacheMonitor(BaseComponent):
         super().__init__()
 
     @handler("update_score", priority=-1000)
-    def update_score(self):
+    def update_score(self, msg):
         ptime = time.strftime("%j %H:%M  ", time.gmtime(self.clock()))
         here = self.cache.get_active_messages()
         elsewhere = self.cache.get_active_messages(here=False)
@@ -93,9 +93,9 @@ class CacheMonitor(BaseComponent):
             self.stats.append(stat.strip())
 
     @handler("new_score")
-    def new_score(self, score):
+    def new_score(self, score, msg):
         self.score = score
-        self.update_score()
+        self.update_score(msg)
 
     @handler("shutdown")
     def shutdown(self):
@@ -179,10 +179,10 @@ class TestCache(unittest.TestCase):
 
         alerter = MockAlerter(alerts)
         buf = MessageCache({'lat': 35.73, 'lon': -78.85, 'fips6': "037183"},
-                           default_SAME_sort, clock=alerter._time)
+                           by_score_and_time, clock=alerter._time)
         self.manager = cachemon = CacheMonitor(buf)
         (cachemon + buf + alerter + Debugger()).run()
-        self.assertEquals(len(expected), len(cachemon.stats))
+        self.assertEquals(len(expected), len(cachemon.stats), cachemon.stats)
         for i in range(0, len(expected)):
             self.assertEquals(expected[i].strip(), cachemon.stats[i].strip())
 

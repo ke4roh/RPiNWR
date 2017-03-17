@@ -38,7 +38,7 @@ class Si4707(object):
     def __init__(self, context):
         self.__event_queue = queue.Queue(maxsize=50)
         self.__command_queue = queue.PriorityQueue(maxsize=50)
-        self.__command_serial_number = 0
+        self.__command_serial_number = 100
         self.__command_serial_number_lock = threading.Lock()
         self.__event_listeners = []
         self.__delayed_events = []
@@ -118,7 +118,7 @@ class Si4707(object):
                     if self.__command_serial_number > 50000:
                         with self.__command_serial_number_lock:
                             if self.__command_queue.empty():
-                                self.__command_serial_number = 0
+                                self.__command_serial_number = 100
                 except Exception:
                     self._logger.exception("housekeeping failed")
             except Exception as e:

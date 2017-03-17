@@ -155,10 +155,12 @@ class Radio_Component(BaseComponent):
                     radio.set_volume(63)
                     if self.args.off_after:
                         Timer(self.args.off_after, radio.power_off).start()
-                    if self.args.mute_after >= 0:
+                    if self.args.mute_after > 0:
                         Timer(self.args.mute_after, radio.mute, [True]).start()  # Mute the radio after 15 seconds
                     self.ready = True
+                    self.fire(radio_status("ready"))
                     next_rsq_check = 0
+                    # TODO use events to get rid of this loop
                     while not radio.shutdown_pending and not radio.stop:
                         if time.time() > next_rsq_check:
                             if radio.radio_power:
@@ -190,6 +192,13 @@ class Radio_Component(BaseComponent):
     def relay_ctl(self, relay, on):
         self.context.relay(relay, on)
 
+    @handler("radio_run_script")
+    def run_script(self, script):
+        self.context.run_script(script)
+
+
+class radio_run_script(Event):
+    pass
 
 class radio_quit(Event):
     pass

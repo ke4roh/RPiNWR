@@ -580,6 +580,9 @@ class SAMEMessage(CommonMessage):
         return 'SAMEMessage: { "message":"%s", "confidence":"%s" }' % (
             _unicodify(msg[0]), "".join([str(x) for x in msg[1]]))
 
+    def __repr__(self):
+        return "SameMessage(%r,%r,%r)" % (self.transmitter, self.headers, self.received_callback)
+
     def to_dict(self):
         return {
             "message": self.get_SAME_message()[0],

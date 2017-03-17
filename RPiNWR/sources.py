@@ -80,6 +80,7 @@ class TextPull(AlertSource):
         self.url = url
         super().__init__(location)
         self.last_status_time = 0
+        self.last_status = None
         # {'lat': loc.lat, 'lon': loc.lon, fips6: 001089, warncounty: ALC089, 'warnzone': loc.zone, 'firewxzone': loc.firezone}
 
     def init(self):
@@ -139,26 +140,30 @@ class TextPull(AlertSource):
             for msg in new_messages:
                 for tm in NWSText.factory(msg):
                     self.fireEvent(new_message(tm, "*"))
-            self.fireEvent(net_status(net_status.ok), "*")
-            self.last_status_time = time.time()
+            self._fire_status(net_status.ok)
         else:
-            self.fireEvent(net_status(net_status.down), "*")
-            self.last_status_time = time.time()
+            self._fire_status(net_status.down)
             # TODO log it
             raise Exception("{0:d} {1:s}".format(response.status, response.reason))
+
+    def _fire_status(self, status):
+        if self.last_status != status:
+            self.last_status = status
+            self.fireEvent(net_status(status), "*")
+        self.last_status_time = time.time()
 
     @handler("generate_events")
     def generate_events(self, event):
         if self.last_status_time + self.timer.interval < time.time():
             if self.is_operational():
-                self.fireEvent(net_status(net_status.ok), "*")
+                self._fire_status(net_status.ok)
             else:
-                self.fireEvent(net_status(net_status.down), "*")
+                self._fire_status(net_status.down)
         event.reduce_time_left(self.last_status_time + self.timer.interval)
 
     @handler("radio_message_escrow")
     def radio_message_escrow(self, action, message):
-        # If a message has been escrowed, start poolling now and fast.
+        # If a message has been escrowed, start polling now and fast.
         if action == EscrowAction.escrowed:
             # Check immediately and every 7 seconds thereafter
             self.timer.reset(7)
@@ -169,7 +174,7 @@ class TextPull(AlertSource):
             self.timer.reset(20)
 
     @handler("new_score")
-    def new_score(self, score):
+    def new_score(self, score, message):
         if self.timer.interval > 7:  # not on high alert for an escrowed message
             if score >= 30:
                 self.timer.reset(20)
@@ -179,7 +184,7 @@ class TextPull(AlertSource):
                 self.timer.reset(120)
 
     def is_operational(self):
-        return self.lastquery < (time.time() - self.timer.interval + 30)
+        return self.lastquery > (time.time() - self.timer.interval + 30)
 
 
 class _FolderMonitorEventListener(FileSystemEventHandler):
