@@ -18,8 +18,8 @@ __author__ = 'ke4roh'
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import logging
-from RPiNWR.Si4707.data import *
-from RPiNWR.Si4707.events import *
+from .data import *
+from .events import *
 import RPiNWR.SAME as SAME
 
 ###############################################################################

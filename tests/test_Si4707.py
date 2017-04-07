@@ -20,7 +20,7 @@ from RPiNWR.Si4707 import *
 from RPiNWR.Si4707.mock import MockContext
 import unittest
 import logging
-
+import time
 
 class TestSi4707(unittest.TestCase):
     def test_power_up(self):
