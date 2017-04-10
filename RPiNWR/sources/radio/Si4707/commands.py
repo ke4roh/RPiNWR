@@ -20,7 +20,7 @@ __author__ = 'ke4roh'
 import logging
 from .data import *
 from .events import *
-import RPiNWR.SAME as SAME
+import RPiNWR.messages.SAME as SAME
 
 ###############################################################################
 # COMMANDS

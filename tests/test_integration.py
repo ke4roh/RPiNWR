@@ -20,11 +20,11 @@ import unittest
 import time
 import os
 from RPiNWR.sources import TextPull, FolderMonitor
-from RPiNWR.cache import MessageCache
+from RPiNWR.messages.cache import MessageCache
 from circuits import Debugger, BaseComponent
 from RPiNWR.alerting import AlertTimer
-from RPiNWR.radio_component import Radio_Component, radio_run_script
-from RPiNWR.radio_squelch import Radio_Squelch
+from RPiNWR.sources.radio.radio_component import Radio_Component, radio_run_script
+from RPiNWR.sources.radio.radio_squelch import Radio_Squelch
 import threading
 import re
 import shutil
@@ -131,7 +131,7 @@ class TestIntegration(unittest.TestCase):
         # It's based on the current time because otherwise the radio will infer the wrong year on message timestamps.
         # TODO Design a better solution: Get year from context? Get time from context? Get time from radio?
         t = int((time.time() - 60 * 60)/(60*60)) * 60 * 60
-        si4707args = "--hardware-context RPiNWR.Si4707.mock.MockContext --mute-after 0  --transmitter WXL58".split()
+        si4707args = "--hardware-context RPiNWR.sources.radio.Si4707.mock.MockContext --mute-after 0  --transmitter WXL58".split()
         injector = ScriptInjector()
         self.box = box = Radio_Component(si4707args) + Radio_Squelch() + \
                          TextPull(location=location, url='http://127.0.0.1:17/') + \

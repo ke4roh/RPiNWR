@@ -16,9 +16,9 @@ __author__ = 'ke4roh'
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import unittest
-from RPiNWR.VTEC import *
+from RPiNWR.messages import *
 import pickle
-from RPiNWR.cache import EventMessageGroup
+from RPiNWR.messages.cache import EventMessageGroup
 import os
 
 
@@ -63,7 +63,7 @@ class TestVTEC(unittest.TestCase):
         self.assertEqual('NEW', v[1].action)
 
     def testSequence(self):
-        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "kddc.cap.p"), "rb") as f:
+        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "kddc_kgld_kwns.cap.p"), "rb") as f:
             alerts = pickle.load(f)
         vv = list(filter(lambda v: v.event_id == "KDDC.TO.W.0052",
                          [item for sublist in [c.vtec for a, c in alerts] for item in sublist]))
@@ -92,9 +92,9 @@ class TestVTEC(unittest.TestCase):
     def test_applicable(self):
         ll = (40.321909, -102.718192)
         fips = "008125"
-        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "kgld.cap.p"), "rb") as f:
+        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "kddc_kgld_kwns.cap.p"), "rb") as f:
             alerts = pickle.load(f)
-        valerts = list(filter(lambda v: v.event_id == "KGLD.TO.A.0206",
+        valerts = list(filter(lambda v: v.event_id == "TO.A.0206",
                               [item for sublist in [c.vtec for a, c in alerts] for item in sublist]))
 
         container = EventMessageGroup()
@@ -111,7 +111,7 @@ class TestVTEC(unittest.TestCase):
         # TODO make a location object that knows its lat/lon, FIPS, state code, and zone.
 
     def test_vtec_sort(self):
-        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "kgld.cap.p"), "rb") as f:
+        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "kddc_kgld_kwns.cap.p"), "rb") as f:
             alerts = pickle.load(f)
         valerts = list([item for sublist in [c.vtec for a, c in alerts] for item in sublist])
 

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 __author__ = 'ke4roh'
-# User-level control of a weather radio based on Si4707
+# The main parts of receiving data from NOAA Weather Radio
 #
-# Copyright © 2016 James E. Scarborough
+# Copyright © 2017 James E. Scarborough
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,9 +16,6 @@ __author__ = 'ke4roh'
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-import RPiNWR.alerting
-import RPiNWR.audio
-import RPiNWR.messages
-import RPiNWR.sources
-
-
+from .nwr_data import get_counties, get_frequency, get_wfo
+from .radio_component import Radio_Component
+from .radio_squelch import Radio_Squelch

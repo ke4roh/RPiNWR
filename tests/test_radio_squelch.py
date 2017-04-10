@@ -18,11 +18,11 @@ __author__ = 'ke4roh'
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import unittest
-from RPiNWR.radio_squelch import Radio_Squelch
-from RPiNWR.sources import new_message, net_status, radio_message_escrow, EscrowAction
+from RPiNWR.sources.radio.radio_squelch import Radio_Squelch, radio_message_escrow, EscrowAction
+from RPiNWR.sources import new_message, net_status
 from circuits.core.events import generate_events
 from threading import Lock
-from RPiNWR.SAME import SAMEMessage
+from RPiNWR.messages.SAME import SAMEMessage
 
 
 class _RS(Radio_Squelch):

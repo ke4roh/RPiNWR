@@ -26,47 +26,20 @@ __author__ = 'ke4roh'
 #    Knows if it is operational (i.e. received an appropriate message recently enough)
 #    Recovers or fires an event when not operational, or when recovered
 
-import time
 from lxml import html
-from circuits import BaseComponent, handler, Timer, Event
+from .net_events import *
+from .alert_source import AlertSource, new_message
+from circuits import handler, Timer, Event
 from circuits.web.client import Client, request
 from urllib.parse import urlencode
-from .NWSText import NWSText, FIPS_STATE
-from enum import Enum
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
-from threading import Lock
-import os
-
-
-class new_message(Event):
-    """This fires when a new message comes in."""
-
+from ..messages.NWSText import NWSText, FIPS_STATE
+from ..sources.radio.radio_squelch import EscrowAction
 
 class poll(Event):
     """This fires every time it's time to fetch data, but handlers must not block."""
 
 
-class net_status(Event):
-    down = 0
-    ok = 1
-
-
 # TODO update polling interval depending on weather
-
-class AlertSource(BaseComponent):
-    def __init__(self, location):
-        self.location = location
-        super().__init__()
-
-    def get_delay_sec(self):
-        raise NotImplementedError()
-
-    def has_polygons(self):
-        raise NotImplementedError()
-
-    def is_operational(self):
-        raise NotImplementedError()
 
 
 class TextPull(AlertSource):
@@ -186,60 +159,3 @@ class TextPull(AlertSource):
     def is_operational(self):
         return self.lastquery > (time.time() - self.timer.interval + 30)
 
-
-class _FolderMonitorEventListener(FileSystemEventHandler):
-    def __init__(self):
-        self.hot_items = set()
-        self.hot_items_lock = Lock()
-
-    def on_created(self, event):
-        self.on_modified(event)
-
-    def on_modified(self, event):
-        if not event.is_directory:
-            with self.hot_items_lock:
-                self.hot_items.add(event.src_path)
-
-
-class FolderMonitor(AlertSource):
-    def __init__(self, location, monitor_path, quiescent_time=3):
-        self.monitor_path = monitor_path
-        self.observer = Observer()
-        self.__listener = _FolderMonitorEventListener()
-        self.observer.schedule(self.__listener, monitor_path, recursive=True)
-        self.observer.start()
-        self.quiescent_time = quiescent_time
-        super().__init__(location)
-        self.last_status_time = 0
-
-    @handler("stopped")
-    def stopped(self, manager):
-        self.observer.stop()
-        self.observer.join()
-
-    @handler("generate_events")
-    def generate_events(self, event):
-        event.reduce_time_left(self.quiescent_time)
-        with self.__listener.hot_items_lock:
-            done = set(
-                filter(lambda f: os.path.getmtime(f) < (time.time() - self.quiescent_time), self.__listener.hot_items))
-            self.__listener.hot_items -= done
-        for f in done:
-            with open(f) as fh:
-                msg = fh.read()
-            tmsg = NWSText.factory(msg)
-            if len(tmsg):
-                for m in tmsg:
-                    for v in m.vtec:
-                        self.fireEvent(new_message(v))
-                        # TODO os.remove(f) - except folders
-
-
-class radio_message_escrow(Event):
-    pass
-
-
-class EscrowAction(Enum):
-    escrowed = "A radio message has been waylaid pending net validation."
-    released = "A radio message has been re-fired from escrow (probably because net failed)."
-    suppressed = "A radio message is discarded because no net problem was observed for the entire escrow time."

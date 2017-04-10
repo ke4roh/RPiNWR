@@ -16,12 +16,12 @@ __author__ = 'ke4roh'
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
 from .chip import Si4707, Context
 from .commands import AlertToneCheck, Callback, Command, EndOfMessage, \
     GetAGCStatus, GetProperty, GetRevision, NotClearToSend, PatchCommand, PowerDown, PowerUp, \
     PupRevision, ReceivedSignalQualityCheck, SameInterruptCheck, SetAGCStatus, SetProperty, \
-    TuneFrequency, TuneStatus
+    TuneFrequency, TuneStatus, Status
 from .events import CommandExceptionEvent, RadioPowerEvent, ReadyToTuneEvent, SAMEEvent, SAMEHeaderReceived, \
     SAMEMessageReceivedEvent, Si4707Event
 from .data import PROPERTIES, DEFAULT_CONFIG, Property
+from .exceptions import FutureException, Si4707Exception, Si4707StoppedException, StatusError

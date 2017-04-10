@@ -19,7 +19,7 @@ __author__ = 'ke4roh'
 import unittest
 import time
 import threading
-from RPiNWR.Si4707.events import SAMEMessageReceivedEvent, EndOfMessage
+from RPiNWR.sources.radio.Si4707 import SAMEMessageReceivedEvent, EndOfMessage
 from RPiNWR.demo import Radio
 import os
 import errno
@@ -43,7 +43,8 @@ class TestDemo(unittest.TestCase):
         TestDemo._remove_if_exists("messages.log", "radio.log")
 
     def test_commands(self):
-        with Radio("--hardware-context RPiNWR.Si4707.mock.MockContext --mute-after -1  --transmitter KID77".split()) as r:
+        with Radio("--hardware-context RPiNWR.sources.radio.Si4707.mock.MockContext "
+                   "--mute-after -1  --transmitter KID77".split()) as r:
             running = [False]
 
             def run_radio():

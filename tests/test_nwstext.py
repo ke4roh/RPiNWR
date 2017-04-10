@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 __author__ = 'ke4roh'
 
-from RPiNWR.NWSText import *
-from RPiNWR.NWSText import _split_ugc as split_ugc
+from RPiNWR.messages.NWSText import *
+from RPiNWR.messages.NWSText import _split_ugc as split_ugc
 import unittest
 from shapely.geometry import Polygon
 

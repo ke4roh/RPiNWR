@@ -18,8 +18,8 @@ __author__ = 'ke4roh'
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import re
 import iso8601
-from RPiNWR.VTEC import VTEC
-from RPiNWR.CommonMessage import CommonMessage
+from .VTEC import VTEC
+from .CommonMessage import CommonMessage
 from shapely.geometry import Polygon
 import time
 

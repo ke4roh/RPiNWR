@@ -17,7 +17,7 @@ __author__ = 'ke4roh'
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import unittest
-from RPiNWR.radio_component import Radio_Component
+from RPiNWR.sources.radio.radio_component import Radio_Component
 import os
 import errno
 from test_sources import Watcher
@@ -41,9 +41,12 @@ class TestRadioComponent(unittest.TestCase):
         TestRadioComponent._remove_if_exists("messages.log", "radio.log")
 
     def test_commands(self):
+        import RPiNWR.sources.radio.Si4707.mock
+        c= RPiNWR.sources.radio.Si4707.mock.MockContext()
         watcher = Watcher()
         r = Radio_Component(
-            "--hardware-context RPiNWR.Si4707.mock.MockContext --mute-after -1  --transmitter KID77".split()) + watcher + Debugger()
+            "--hardware-context RPiNWR.sources.radio.Si4707.mock.MockContext "
+            "--mute-after -1  --transmitter KID77".split()) + watcher + Debugger()
         r.start()
         try:
             watcher.wait_for_start()

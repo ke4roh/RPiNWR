@@ -20,8 +20,8 @@ __author__ = 'ke4roh'
 from math import ceil
 import random
 import unittest
-from RPiNWR.SAME import *
-import RPiNWR.SAME as SAME
+from RPiNWR.messages.SAME import *
+import RPiNWR.messages.SAME as SAME
 import logging
 import json
 from calendar import timegm
@@ -168,7 +168,7 @@ class TestSAME(unittest.TestCase):
             for i in range(0, len(msg["headers"])):
                 if type(msg["headers"][i][1]) is list:
                     msg["headers"][i][1] = "".join([str(x) for x in msg["headers"][i][1]])
-                msg["headers"][i][0] = SAME._unicodify(msg["headers"][i][0])
+                msg["headers"][i][0] = unicodify(msg["headers"][i][0])
 
             if "clean" in msg:
                 clean_message = msg["clean"]

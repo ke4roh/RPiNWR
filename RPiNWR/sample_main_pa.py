@@ -16,10 +16,10 @@ __author__ = 'ke4roh'
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-from .radio_component import Radio_Component
-from .radio_squelch import Radio_Squelch
+from .radio.radio_component import Radio_Component
+from .radio.radio_squelch import Radio_Squelch
 from .sources import TextPull, FolderMonitor
-from .cache import MessageCache
+from .messages.cache import MessageCache
 from circuits import Debugger
 from .alerting import AlertTimer
 from .audio import AudioPlayer

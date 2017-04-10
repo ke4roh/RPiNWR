@@ -19,10 +19,8 @@ __author__ = 'ke4roh'
 
 import unittest
 import os
-from glob import glob
 import xml.etree.ElementTree as etree
-import RPiNWR.CAP as CAP
-import time
+import RPiNWR.messages.CAP as CAP
 from shapely.geometry import Point
 
 

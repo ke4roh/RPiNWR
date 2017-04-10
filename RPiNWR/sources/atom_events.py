@@ -22,35 +22,9 @@ import xml.etree.ElementTree as etree
 import urllib3
 import logging
 import iso8601
-import calendar
+from RPiNWR.sources.net_events import NetStatus
 
 _http = urllib3.PoolManager(num_pools=3)
-
-
-class NetStatus(object):
-    def __init__(self, msg, normal=False, t=None):
-        """
-        :param msg: Whatever you want to say about the status
-        :param normal: True if and only if this is successful operation
-        :param t: The time, either seconds since the epoch or an HTTP date string like 'Wed, 25 May 16 01:24:05 GMT'
-        """
-        self.msg = msg
-        self.normal = normal and True
-        if t is None:
-            t = time.time()
-        try:
-            t += 0
-        except TypeError:
-            # Maybe it was a string to parse
-            t = calendar.timegm(time.strptime(t.strip(), '%a, %d %b %Y %H:%M:%S %Z'))
-        self.time = t
-
-    def __str__(self):
-        if self.normal:
-            stat = "normal"
-        else:
-            stat = "ERROR"
-        return "NetStatus %s %s %.2df" % (stat, self.msg, self.time)
 
 
 class NewAtomEntry(object):

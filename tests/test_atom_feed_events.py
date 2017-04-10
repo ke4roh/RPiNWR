@@ -27,8 +27,8 @@ import threading
 import shutil
 import logging
 import calendar
-import RPiNWR.atom_events as ae
-from RPiNWR.CAP import CAPMessage
+import RPiNWR.sources.atom_events as ae
+from RPiNWR.messages.CAP import CAPMessage
 import pickle
 
 

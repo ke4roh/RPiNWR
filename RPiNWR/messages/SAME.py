@@ -23,8 +23,7 @@ import logging
 import threading
 import functools
 import calendar
-from RPiNWR.nwr_data import *
-from RPiNWR.CommonMessage import CommonMessage
+from .CommonMessage import CommonMessage
 
 # See http://www.nws.noaa.gov/directives/sym/pd01017012curr.pdf
 # also https://www.gpo.gov/fdsys/pkg/CFR-2010-title47-vol1/xml/CFR-2010-title47-vol1-sec11-31.xml
@@ -275,6 +274,8 @@ def average_message(headers, transmitter):
     # 5. Check that characters are in the valid set for the section of the message
     # 6. Substitute any low-confidence data with data from the list of possible values
     # TODO factor this into different functions to do the work and test them separately
+    from ..sources.radio.nwr_data import get_counties, get_wfo
+
     size = max([len(x[0]) for x in headers])
     bitstrue = [0] * 8 * size
     bitsfalse = [0] * 8 * size
@@ -404,7 +405,7 @@ def average_message(headers, transmitter):
     ix += 5
     avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, ix, ['NWS'])
 
-    return _unicodify(avgmsg), confidences[0:len(avgmsg)]
+    return unicodify(avgmsg), confidences[0:len(avgmsg)]
 
 # -WXR-TOR-039173-039051-139069+0030-1591829-KCLE/NWS
 SAME_PATTERN = re.compile('-(EAS|CIV|WXR|PEP)-([A-Z]{3})((?:-\\d{6})+)\\+(\\d{4})-(\\d{7})-([A-Z/]+)-?')
@@ -471,7 +472,7 @@ class SAMEMessage(CommonMessage):
             confidence[0] + 'a'
         except TypeError:
             confidence = "".join([str(x) for x in confidence])
-        self.headers.append((_unicodify(header), confidence, when))
+        self.headers.append((unicodify(header), confidence, when))
         self.timeout = when + 6
 
     def get_areas(self):
@@ -578,7 +579,7 @@ class SAMEMessage(CommonMessage):
     def __str__(self):
         msg = self.get_SAME_message()
         return 'SAMEMessage: { "message":"%s", "confidence":"%s" }' % (
-            _unicodify(msg[0]), "".join([str(x) for x in msg[1]]))
+            unicodify(msg[0]), "".join([str(x) for x in msg[1]]))
 
     def __repr__(self):
         return "SameMessage(%r,%r,%r)" % (self.transmitter, self.headers, self.received_callback)
@@ -691,7 +692,7 @@ class SAMECache(object):
             self.__elsewhere_messages = self.get_active_messages(when, here=False)
 
 
-def _unicodify(str):
+def unicodify(str):
     """
     :param str: An ASCII string
     :return: A string such that all the characters are printable, and the LSB of the Unicode representation

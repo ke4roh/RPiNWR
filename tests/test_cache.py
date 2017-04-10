@@ -16,14 +16,11 @@ __author__ = 'ke4roh'
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import unittest
-from RPiNWR.SAME import *
-from RPiNWR.cache import *
-from RPiNWR.VTEC import *
+from RPiNWR.messages import *
 import pickle
 import os
-from RPiNWR.CommonMessage import new_message
 from test_sources import Watcher
-from circuits import Component, Debugger
+from circuits import Component, Debugger, Event, BaseComponent, handler
 import time
 import re
 
@@ -255,7 +252,7 @@ class TestCache(unittest.TestCase):
         self.assertIsNot(0, eix, 'need assertions')
 
     def test_not_here_with_polygon(self):
-        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "kgld.cap.p"), "rb") as f:
+        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "kddc_kgld_kwns.cap.p"), "rb") as f:
             alerts = pickle.load(f)
         valerts = list(filter(lambda v: v.event_id == "KGLD.TO.W.0028", [item for sublist in [c.vtec for a, c in alerts]
                                                                          for item in sublist]))
@@ -267,10 +264,10 @@ class TestCache(unittest.TestCase):
         self.assertFalse(buf.is_effective((40.321909, -102.718192), "008125", False, lambda: valerts[0].published))
 
     def test_not_here_sans_polygon(self):
-        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "kgld.cap.p"), "rb") as f:
+        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "kddc_kgld_kwns.cap.p"), "rb") as f:
             alerts = pickle.load(f)
-        valerts = list(filter(lambda v: v.event_id == "KGLD.TO.A.0206", [item for sublist in [c.vtec for a, c in alerts]
-                                                                         for item in sublist]))
+        valerts = list(filter(lambda v: v.event_id == "TO.A.0206",
+                              [item for sublist in [c.vtec for a, c in alerts] for item in sublist]))
 
         buf = EventMessageGroup()
 

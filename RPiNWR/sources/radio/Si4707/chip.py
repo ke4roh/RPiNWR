@@ -27,11 +27,14 @@ __author__ = 'ke4roh'
 import queue
 import heapq
 import threading
-from RPiNWR.Si4707.commands import *
-from RPiNWR.Si4707.data import *
-from RPiNWR.Si4707.events import *
-from RPiNWR.Si4707.exceptions import *
-from RPiNWR.nwr_data import *
+from .commands import Status, SameInterruptCheck, AlertToneCheck, ReceivedSignalQualityCheck, PatchCommand, PowerUp, \
+    PowerDown, Callback, GetProperty, SetProperty, TuneFrequency, TuneStatus, GetAGCStatus, SetAGCStatus
+from .events import CommandExceptionEvent, NotClearToSend
+from .exceptions import Si4707StoppedException, FutureException
+from .data import DEFAULT_CONFIG
+from ..nwr_data import *
+import logging
+import time
 
 
 class Si4707(object):

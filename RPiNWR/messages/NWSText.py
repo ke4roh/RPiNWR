@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 __author__ = 'ke4roh'
 
-from RPiNWR.CommonMessage import CommonMessage
-from RPiNWR.VTEC import VTEC
+from .CommonMessage import CommonMessage
+from .VTEC import VTEC
 import re
 import dateutil.parser
 from shapely.geometry import Polygon

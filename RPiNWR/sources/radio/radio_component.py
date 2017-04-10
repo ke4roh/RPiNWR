@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 __author__ = 'ke4roh'
-# Demo weather radio app based on Si4707
+# Adapt the Si4707 radio code to work with the Circuits framework
 #
 # Copyright © 2016 James E. Scarborough
 #
@@ -17,33 +17,52 @@ __author__ = 'ke4roh'
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
+"""
+This adapts the radio code that is already working to tie in to the circuits framework. This isn't ideal.
+It would be better to go in and rework the radio code to use circuits, but I had some difficulty doing that
+the first time around because the two have slightly different methodologies for managing their tasks.
+"""
 import logging
-from RPiNWR.sources.radio.Si4707 import *
+from ..radio.Si4707 import *
 from threading import Timer
 import time
 import argparse
 import importlib
+from circuits import handler, BaseComponent, Event
+from ...sources import new_message
 
-_CONTEXTS = ["RPiNWR.sources.radio.Si4707.mock.MockContext"]
+# TODO: make a circuits component context with a worker that relays to the AIwIBoardContext (or other)
+_CONTEXTS = ["RPiNWR.Si4707.mock.MockContext"]
 try:
     from RPiNWR.AIWIBoardContext import AIWIBoardContext
 
-    _CONTEXTS.append("RPiNWR.sources.radio.Si4707.AIWIBoardContext.AIWIBoardContext")
+    _CONTEXTS.append("RPiNWR.AIWIBoardContext.AIWIBoardContext")
 except ImportError:
     pass  # It's not a valid choice in this environment
 _DEFAULT_CONTEXT = _CONTEXTS[-1]
 
 
-class Radio(object):
+class Radio_Component(BaseComponent):
+    """
+    This component's job is to own the Si4707 object and its context to provide these Circuits framework events:
+    * new_message for SAME messages
+    Coming soon:
+    * radio_status (up,down, frequency, rssi/snr)
+
+    This class becomes obsolete with refactoring for:
+    * All Si4707 functions executed by event (mute, unmute, volume, RSQ check...)
+    * Context functions by event (write bytes, read bytes, set GPIO (relays))
+    """
+
     def __init__(self, args=None):
+        super().__init__()
         self.radio = None
         self.context = None
         self.ready = False
         self.logger = logging.getLogger("RPiNWR")
         clparser = argparse.ArgumentParser()
         clparser.add_argument("--off-after", default=None)
-        clparser.add_argument("--hardware-context", default=_DEFAULT_CONTEXT, type=Radio._lookup_type)
+        clparser.add_argument("--hardware-context", default=_DEFAULT_CONTEXT, type=Radio_Component._lookup_type)
         clparser.add_argument("--mute-after", default=15, type=float)
         clparser.add_argument("--transmitter", default=None)
         self.args = clparser.parse_args(args)
@@ -83,7 +102,7 @@ class Radio(object):
         except ImportError:
             i2cLogger = logging.getLogger(
                 'Adafruit_I2C.Device.Bus')  # a little less specific, but probably just as good
-        i2cLogger.addFilter(Radio.exclude_routine_status_checks)
+        i2cLogger.addFilter(Radio_Component.exclude_routine_status_checks)
 
     @staticmethod
     def exclude_routine_status_checks(record):
@@ -94,7 +113,8 @@ class Radio(object):
              record.args[1][0] == 128 and len(record.args[1]) == 1))
 
     def log_event(self, event):
-        if True or isinstance(event, SAMEEvent):
+        if isinstance(event, SAMEMessageReceivedEvent):
+            self.fire(new_message(event.message))
             self.logger.info(str(event))
 
     def log_tune(self, event):
@@ -111,7 +131,11 @@ class Radio(object):
     def _contextFactory(self):
         return self.args.hardware_context()
 
-    def run(self):
+    @handler("started")
+    def started(self, component):
+        Timer(0, self.__run).start()
+
+    def __run(self):
         """
         :return: when the radio stops, and not before
         """
@@ -129,14 +153,16 @@ class Radio(object):
                     radio.set_volume(63)
                     if self.args.off_after:
                         Timer(self.args.off_after, radio.power_off).start()
-                    if self.args.mute_after >= 0:
+                    if self.args.mute_after > 0:
                         Timer(self.args.mute_after, radio.mute, [True]).start()  # Mute the radio after 15 seconds
                     self.ready = True
+                    self.fire(radio_status("ready"))
                     next_rsq_check = 0
-                    while not radio.stop:
+                    # TODO use events to get rid of this loop
+                    while not radio.shutdown_pending and not radio.stop:
                         if time.time() > next_rsq_check:
                             if radio.radio_power:
-                                radio.do_command(ReceivedSignalQualityCheck()).get()
+                                self.fire(radio_status(radio.do_command(ReceivedSignalQualityCheck()).get()))
                             next_rsq_check = time.time() + 300
                         time.sleep(.1)
                         # Run these blinking commands through the command queue to see that it's still working
@@ -145,20 +171,45 @@ class Radio(object):
                         # radio.queue_callback(context.led, [False])
                         # time.sleep(4.5)
                         # The radio turns off when the with block exits
+                    self.fire(radio_status(False))
                     self.ready = False
+                    print("Radio shutdown.")
 
         except KeyboardInterrupt:
             pass  # suppress the stack trace
+        finally:
+            self.fire(radio_quit())
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    @handler("stopped")
+    def stopped(self, manager):
         self.ready = False
         if self.radio:
-            self.radio.shutdown()
+            Timer(0, self.radio.shutdown).start()
+
+    @handler("aiwi_relay_control")
+    def relay_ctl(self, relay, on):
+        self.context.relay(relay, on)
+
+    @handler("radio_run_script")
+    def run_script(self, script):
+        self.context.run_script(script)
 
 
-if __name__ == '__main__':
-    with Radio() as r:
-        r.run()
+class radio_run_script(Event):
+    pass
+
+class radio_quit(Event):
+    pass
+
+
+class radio_status(Event):
+    pass
+
+
+class aiwi_relay_control(Event):
+    """
+    Control the relays
+
+    :param relay 0 or 1
+    :param on True or False
+    """

@@ -18,10 +18,10 @@ __author__ = 'ke4roh'
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from RPiNWR.Si4707 import Context, PROPERTIES, Property
+from RPiNWR.sources.radio.Si4707 import Context, PROPERTIES, Property
 import threading
 import time
-from RPiNWR.SAME import SAME_PATTERN
+from RPiNWR.messages.SAME import SAME_PATTERN
 import struct
 import logging
 import re

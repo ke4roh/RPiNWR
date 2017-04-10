@@ -19,7 +19,7 @@ __author__ = 'ke4roh'
 import time
 import calendar
 import logging
-from RPiNWR.CommonMessage import CommonMessage
+from .CommonMessage import CommonMessage
 
 # see http://www.nws.noaa.gov/om/vtec/
 # http://www.nws.noaa.gov/directives/sym/pd01017003curr.pdf
@@ -154,6 +154,9 @@ def default_VTEC_sort(aa, bb):
 
 
 class PrimaryVTEC(VTEC):
+    """
+    This is the first part of the VTEC string.  It includes the storm ID and times.
+    """
     # /k.aaa.cccc.pp.s.####.yymmddThhnnZB-yymmddThhnnZE/
     def __init__(self, vtec, container=None):
         super().__init__(vtec, container)

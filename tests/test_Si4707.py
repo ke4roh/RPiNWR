@@ -16,8 +16,8 @@ __author__ = 'ke4roh'
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from RPiNWR.Si4707 import *
-from RPiNWR.Si4707.mock import MockContext
+from RPiNWR.sources.radio.Si4707 import *
+from RPiNWR.sources.radio.Si4707.mock import MockContext
 import unittest
 import logging
 import time
