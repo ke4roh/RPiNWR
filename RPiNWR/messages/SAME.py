@@ -449,7 +449,7 @@ class SAMEMessage(CommonMessage):
                 self.start_time = time.time()
                 self.start_time = self.get_start_time_sec()
                 self.timeout = float("-inf")
-                event_id = self.__avg_message
+                event_id = self.__avg_message[0]
             else:
                 self.headers = headers
                 self.start_time = headers[0][2]
