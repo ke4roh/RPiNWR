@@ -425,3 +425,14 @@ class TestSAME(unittest.TestCase):
         self.assertEqual((2, 'L'), SAME._reconcile_character(bitstrue, bitsfalse,
                                                              'ABCDEFGHIJKLMNOPQRSTUVWXYZ'))
 
+
+    def test_mutate_string(self):
+        # setup
+        test_string = 'string'
+        expected_result = '$tring'
+
+        # test
+        test_mutate_string = SAME.mutate_string(test_string, 0, '$')
+
+        # assert
+        self.assertEqual(test_mutate_string, expected_result)
