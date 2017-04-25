@@ -26,7 +26,7 @@ import logging
 import json
 from calendar import timegm
 import os
-
+import string
 
 class TestSAME(unittest.TestCase):
     @staticmethod
@@ -440,3 +440,101 @@ class TestSAME(unittest.TestCase):
         test_valid_list = SAME._ORIGINATOR_CODES
         self.assertTrue(SAME.check_if_valid_code(test_codes, test_valid_list))
         self.assertFalse(SAME.check_if_valid_code(test_codes_2, test_valid_list))
+
+    def test_split_message(self):
+
+        '''
+        '-WXR-RwVm03090;-0202p1-020091-02012\x11-02= <3-\x1029145-02)195-029037+0030-;0³170p-OGAX/FWS-'
+        "-GYR-RWT-02010³-021209-020891-°20121-029047-129165%029095-02¹037;\x100\x130-\x13031710,KE@X'ÎWS-"
+        '/WXR-ZWT-020±03-22020\x19-06°091-121121-°2904?/229145-p2909%-029037+0830-30;57 0mËEAXoNWS-'
+        '-WXR-RwVm03090;-0202p1-020091-02012\x11-02= <3-\x1029145-02)195-029037+0030-;0³170p-OGAX/FWS-'
+        "-GYR-RWT-02010³-021209-020891-°20121-029047-129165%029095-02¹037;\x100\x130-\x13031710,KE@X'ÎWS-"
+        '''
+
+        # setup
+        input_msg = '-WXR-SVR-037085-037101+0100-1250218-KRAH/NWS-'
+        input_confidences = [0]*len(input_msg)
+        input_msg_2 = '-WXR-RWT-020103-020209-020091-°20121-029047-029165%029095-029037;0030-3031710,KEAX\\\'ÎWS-'
+        input_confidences_2 = [0]*len(input_msg_2)
+
+        # expected values
+        expected_result = [['WXR', 'SVR', ['037085', '037101'], '0100', '1250218', 'KRAH/NWS'],
+                           [[0, 0, 0], [0, 0, 0], [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]], [0, 0, 0, 0],
+                            [0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0]]]
+        expected_result_2 = [['WXR', 'RWT', ['020103', '020209', '020091', '°20121', '029047', '029165', '029095', '029037',], '0030', '3031710', 'KEAX/NWS'],
+                             [[0, 0, 0], [0, 0, 0], [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0],
+                                                     [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]], [0, 0, 0, 0],
+                              [0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0]]]
+
+        # test
+        test_msg = SAME.split_message(input_msg, input_confidences)
+        test_msg_2 = SAME.split_message(input_msg_2, input_confidences_2)
+
+        # assert
+        self.assertEqual(test_msg, expected_result)
+        self.assertEqual(test_msg_2, expected_result_2)
+
+    def test__truncate(self):
+
+        # NOTES:
+        # for random data, stipulate random number seed
+        # split all of these into separate tests (organize by similar trains of thought)
+        # make message generation setup into its own method
+        # put expected and test msg next to each other, add to array as tuples
+
+        # setup
+        test_msg = self.make_noisy_messages(.03)
+        test_msg_2 = self.make_noisy_messages(.05)
+
+        # make a random message that's too short by one character (we want our messages to be 38 or higher to be valid)
+        short_msg = [c for c in random.sample(string.ascii_letters, 37)]
+        test_msg_short = self.add_noise(short_msg, 0)
+        long_msg = '-GYR-RWT-02010³-021209-020891-°20121-029047-129165%029095-02¹037;00-031710,KE@X\'ÎWS-asdada2983918**!@*#@&%#$&%#*asddddddddddddJJJJJJJJJJJJJJJJJJ'
+        test_msg_long = self.add_noise(long_msg, 0)
+
+
+        # TEST LIST
+        test_list = ['-WXR-RwVm03090;-0202p1-020091-02012\x11-02= <3-\x1029145-02)195-029037+0030-;0³170p-OGAX/FWS-',
+                     "-GYR-RWT-02010³-021209-020891-°20121-029047-129165%029095-02¹037;\x100\x130-\x13031710,KE@X'ÎWS-",
+                     '/WXR-ZWT-020±03-22020\x19-06°091-121121-°2904?/229145-p2909%-029037+0830-30;57 0mËEAXoNWS-',
+                     '-WXR-RwVm03090;-0202p1-020091-02012\x11-02= <3-\x1029145-02)195-029037+0030-;0³170p-OGAX/FWS-',
+                     "-GYR-RWT-02010³-021209-020891-°20121-029047-129165%029095-02¹037;\x100\x130-\x13031710,KE@X'ÎWS-"]
+        '''
+        for i in test_list:
+            noisy = self.add_noise(i, 0)
+            truncated = SAME._truncate(noisy[0], noisy[1])
+            print(truncated)
+        '''
+
+        # strip out just the message string from the tuple of transmitter, confidences, message
+        test_avgmsg = [i for i in test_msg[1][1][0]]
+        test_avgmsg_2 = [i for i in test_msg_2[1][1][0]]
+        test_avgmsg_long = [i for i in test_msg_long[0]]
+
+        # the messages we're expecting to be outputted from __truncate
+        expected_message = '-WXR-RWT-020103-020209-020091-°20121-029047-029165-029095-029037+0030-3031710-KEAX/NWS-'
+        expected_message_2 = '-GYR-RWT-02010³-021209-020891-°20121-029047-129165-029095-02¹037+000-031710-KE@X/NWS-'
+        expected_message_long = '-GYR-RWT-02010³-021209-020891-°20121-029047-129165-029095-02¹037+000-031710-KE@X/NWS-'
+        expected_message_short = ''.join(short_msg)
+
+        # testing
+        test_truncate = SAME._truncate(test_avgmsg, test_msg[1][1][1])
+        test_truncate_2 = SAME._truncate(test_avgmsg_2, test_msg_2[1][1][1])
+        test_truncate_long = SAME._truncate(test_avgmsg_long, test_msg_long[1])
+        test_truncate_short = SAME._truncate(short_msg, test_msg_short[1])
+
+        '''
+        for i in [test_truncate, test_truncate_2, test_truncate_long]:
+            print(i)
+        '''
+
+        # assert
+        print(''.join(test_truncate[0]))
+        print(test_truncate[0])
+        self.assertEqual(''.join(test_truncate[0]), expected_message)
+        self.assertEqual(''.join(test_truncate_2[0]), expected_message_2)
+        self.assertEqual(''.join(test_truncate_long[0]), expected_message_long)
+
+        # test length
+        self.assertTrue(len(test_truncate_short[0]) == 37)
+        self.assertEqual(''.join(test_truncate_short[0]), expected_message_short)
