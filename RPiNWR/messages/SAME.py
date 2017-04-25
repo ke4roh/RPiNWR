@@ -102,6 +102,21 @@ VALID_DURATIONS = (
     (.9, '0330'), (1.1, '0400'), (.9, '0430'), (1.1, '0500'), (.9, '0530'), (1.1, '0600'))
 
 
+# takes a list of codes and a list of valid codes, and checks to make sure most of the codes correspond to a valid list
+# e.g. if we have a list of ['WXR', 'W^X', 'WXR'] we should get the result that this is a valid originator code
+
+
+def check_if_valid_code(codes, valid_list):
+    code_list = []
+    # Check if we have two matching and valid codes
+    for c in codes:
+        # if it's already in code_list we know 2 out of 3 of the codes are the same
+        if c in valid_list and c in code_list:
+            return c
+        else:
+            code_list.append(c)
+
+
 # faux-mutates a string by transforming it into a list, making changes, and casting it back to a string
 def mutate_string(string, old_char, new_char):
     """
