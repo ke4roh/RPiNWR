@@ -396,7 +396,6 @@ def sum_confidence(bitstrue, bitsfalse, headers):
     return 1
 
 
-
 def average_message(headers, transmitter):
     """
     Compute the correct message by averaging headers, restricting input to the valid character set, and filling
