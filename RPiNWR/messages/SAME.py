@@ -286,6 +286,117 @@ def _truncate(avgmsg, confidences):
     return avgmsg, confidences
 
 
+# split message into component parts according to SAME protocol
+# EXAMPLE:
+# format: -<Originator>-<Event>-<Locations>-<Purge Time>-<Timestamp>-<Call Sign>
+# clean message: -WXR-TOR-039173-039051-139069+0030-1591829-KCLE/NWS
+# dirty message: -WXR-RWT-020103-020209-020091-°20121-029047-029165%029095-029037;0030-3031710,KEAX\\'ÎWS-
+
+
+# TODO: make this return confidences as well as characters
+def split_message(message, confidences):
+
+    # first, truncate the message and separate message and confidences
+    truncated_message = _truncate(message, confidences)
+    message = truncated_message[0]
+    confidences = truncated_message[1]
+
+    # init
+    # this is what we want to use to initially split up the message, we expect this to be a '+'
+    # _truncate will always give us a message with 22 chars after the delimiter, therefore we want the character
+    # right before that set of chars (i.e. the delimiter itself)
+
+    # component parts of message
+    main_delimiter = message[len(message)-23]
+    originator_code = ''
+    event_code = ''
+    location_codes = []
+    purge_time = ''
+    exact_time = ''
+    callsign = ''
+
+    # start splitting!
+    main_delimiter_split = message.split(main_delimiter)
+
+    if len(main_delimiter_split) == 2:
+        # split up to (and including) location codes
+        first_half_split = main_delimiter_split[0].split('-')
+        # everything after location codes
+        second_half_split = main_delimiter_split[1].split('-')
+        # 0030-3031710,KEAX\\'ÎWS-
+
+        # check to make sure we're getting the formats we expect for individual chunks of the message
+        # then add to our set of return values
+
+        # first half:
+        originator_code = (first_half_split[1])
+        event_code = (first_half_split[2])
+        location_codes = []
+        for i in range(3, len(first_half_split)):
+            location_codes.append(first_half_split[i])
+
+        # second half:
+        purge_time = (second_half_split[0])
+        exact_time = (second_half_split[1])
+        callsign = (second_half_split[2])
+
+    final_message = [originator_code, event_code, location_codes, purge_time, exact_time, callsign]
+    final_confidences = []
+
+    # align confidences with message parts
+    count = 0
+    for part in final_message:
+        # this is the "chunk" of confidences we align with each message part
+        con_set = []
+        # this is the array that contains arrays of location code confidences
+        location_con_set = []
+        # this is to handle location codes, since they are in their own array
+        if type(part) == list:
+            for member in part:
+                # TODO: fix this terrible variable name
+                this_location_array = []
+                for char in member:
+                    this_location_array.append(confidences[count])
+                    count += 1
+                location_con_set.append(this_location_array)
+            final_confidences.append(location_con_set)
+        else:
+            for char in part:
+                con_set.append(confidences[count])
+                count += 1
+            final_confidences.append(con_set)
+        # empty out con_set
+        con_set = []
+
+    return [final_message, final_confidences]
+
+
+# takes headers and computes sums of confidence of bit values
+# TODO: rename this
+def sum_confidence(bitstrue, bitsfalse, headers):
+    for (msg, c, when) in headers:
+        # convert to int if c is a string
+        if type(c) is str:
+            confidence = [int(x) for x in c]
+        # otherwise leave it as a list of ints
+        else:
+            confidence = c
+        # Loop through the characters of the message
+        for i in range(0, len(msg)):
+            if ord(msg[i]):  # null characters don't count b/c they indicate no data, not all 0 bits
+                # Loop through bits and apply confidence for true or false
+                for j in range(0, 8):
+                    # if the last bit (e.g. 00001) is a 1:
+                    if (ord(msg[i]) >> j) & 1:
+                        # then add it to the bitstrue (or bitsfalse) bits with that bit's confidence level
+                        bitstrue[(i << 3) + j] += 1 * confidence[i]
+                    else:
+                        bitsfalse[(i << 3) + j] += 1 * confidence[i]
+    # return 1 if successful
+    return 1
+
+
+
 def average_message(headers, transmitter):
     """
     Compute the correct message by averaging headers, restricting input to the valid character set, and filling
@@ -312,20 +423,7 @@ def average_message(headers, transmitter):
     confidences = [0] * size
 
     # First look through the messages and compute sums of confidence of bit values
-    for (msg, c, when) in headers:
-        if type(c) is str:
-            confidence = [int(x) for x in c]
-        else:
-            confidence = c
-        # Loop through the characters of the message
-        for i in range(0, len(msg)):
-            if ord(msg[i]):  # null characters don't count b/c they indicate no data, not all 0 bits
-                # Loop through bits and apply confidence for true or false
-                for j in range(0, 8):
-                    if (ord(msg[i]) >> j) & 1:
-                        bitstrue[(i << 3) + j] += 1 * confidence[i]
-                    else:
-                        bitsfalse[(i << 3) + j] += 1 * confidence[i]
+    sum_confidence(bitstrue, bitsfalse, headers)
 
     # Then combine that information into a single aggregate message
     avgmsg = []
