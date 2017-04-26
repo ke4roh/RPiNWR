@@ -425,7 +425,6 @@ class TestSAME(unittest.TestCase):
         self.assertEqual((2, 'L'), SAME._reconcile_character(bitstrue, bitsfalse,
                                                              'ABCDEFGHIJKLMNOPQRSTUVWXYZ'))
 
-
     def test_mutate_string(self):
         # setup
         test_string = 'string'

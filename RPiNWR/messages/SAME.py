@@ -394,6 +394,24 @@ def sum_confidence(bitstrue, bitsfalse, headers):
     return 1
 
 
+# takes a list of true bits, false bits, and confidences, and assembles characters from those lists
+def assemble_char(bitstrue, bitsfalse, confidences, size):
+    # the resultant averaged string we get from the bits
+    avgstr= []
+    for i in range(0, size):
+        # Assemble a character from the various bits
+        c = 0
+        confidences[i] = 0
+        for j in range(0, 8):
+            bit_weight = (bitstrue[(i << 3) + j] - bitsfalse[(i << 3) + j])
+            c |= (bit_weight > 0) << j
+            confidences[i] += abs(bit_weight)
+        if c == 0:
+            confidences[i] = 0
+        avgstr.append(chr(c))
+    return avgstr
+
+
 def average_message(headers, transmitter):
     """
     Compute the correct message by averaging headers, restricting input to the valid character set, and filling
@@ -414,28 +432,19 @@ def average_message(headers, transmitter):
     # TODO factor this into different functions to do the work and test them separately
     from ..sources.radio.nwr_data import get_counties, get_wfo
 
+    # init
     size = max([len(x[0]) for x in headers])
     bitstrue = [0] * 8 * size
     bitsfalse = [0] * 8 * size
     confidences = [0] * size
+    avgmsg = []
+    byte_pattern_index = 0
 
     # First look through the messages and compute sums of confidence of bit values
     sum_confidence(bitstrue, bitsfalse, headers)
 
     # Then combine that information into a single aggregate message
-    avgmsg = []
-    byte_pattern_index = 0
-    for i in range(0, size):
-        # Assemble a character from the various bits
-        c = 0
-        confidences[i] = 0
-        for j in range(0, 8):
-            bit_weight = (bitstrue[(i << 3) + j] - bitsfalse[(i << 3) + j])
-            c |= (bit_weight > 0) << j
-            confidences[i] += abs(bit_weight)
-        if c == 0:
-            confidences[i] = 0
-        avgmsg.append(chr(c))
+    avgmsg = assemble_char(bitstrue, bitsfalse, confidences, size)
 
     # Figure out the length
     avgmsg, confidences = _truncate(avgmsg, confidences)
@@ -465,7 +474,6 @@ def average_message(headers, transmitter):
                     byte_pattern_index += 2
                 else:
                     byte_pattern_index += multipath + 1
-
             mutate_string(avgmsg, i, c)
         confidences[i] = min(9, byte_confidence >> 3)
     avgmsg = "".join(avgmsg)
