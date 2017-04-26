@@ -418,8 +418,9 @@ def average_message(headers, transmitter):
     Compute the correct message by averaging headers, restricting input to the valid character set, and filling
     in expected values when it's unambiguous based on other parts of the message.
 
-    :param headers: an array of tuples, each containing a string message and an array (or string) of confidence values.
-       The complete message is assumed to be as long as the longest message, and messages align at the start.
+    :param headers: an array of tuples, each containing a string message, an array (or string) of confidence values, 
+    and a timestamp.
+    The complete message is assumed to be as long as the longest message, and messages align at the start.
     :return: a tuple containing a single string corresponding to the most certain available data, and
              the combined confidence for each character (range 1-9)
     """
@@ -438,10 +439,21 @@ def average_message(headers, transmitter):
     bitstrue = [0] * 8 * size
     bitsfalse = [0] * 8 * size
     confidences = [0] * size
-    avgmsg = []
     byte_pattern_index = 0
 
-    # First look through the messages and compute sums of confidence of bit values
+    # TODO: change this so it checks each part of the message separately
+
+    # First, break up the message into its component parts
+    for i in headers:
+        msg = i[0]
+        con = i[1]
+        split = split_message(msg, con)
+        split_msg = split[0]
+        split_con = split[1]
+        i[0] = split_msg
+        i[1] = split_con
+
+    # Look through the messages and compute sums of confidence of bit values
     sum_confidence(bitstrue, bitsfalse, headers)
 
     # Then combine that information into a single aggregate message
