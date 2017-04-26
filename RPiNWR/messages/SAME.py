@@ -460,7 +460,7 @@ def average_message(headers, transmitter):
     avgmsg = assemble_char(bitstrue, bitsfalse, confidences, size)
 
     # Figure out the length
-    avgmsg, confidences = _truncate(avgmsg, confidences)
+    # avgmsg, confidences = _truncate(avgmsg, confidences)
 
     # Check the character against the space of possible characters
     avgmsg = [i for i in avgmsg]
