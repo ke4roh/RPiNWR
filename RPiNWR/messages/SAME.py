@@ -101,7 +101,6 @@ VALID_DURATIONS = (
     (1, '0015'), (1, '0030'), (1.1, '0045'), (1.1, '0100'), (1, '0130'), (1.1, '0200'), (1, '0230'), (1.1, '0300'),
     (.9, '0330'), (1.1, '0400'), (.9, '0430'), (1.1, '0500'), (.9, '0530'), (1.1, '0600'))
 
-
 # takes a list of codes and a list of valid codes, and checks to make sure most of the codes correspond to a valid list
 # e.g. if we have a list of ['WXR', 'W^X', 'WXR'] we should get the result that this is a valid originator code
 
