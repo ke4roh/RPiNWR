@@ -161,7 +161,7 @@ def _word_distance(word, confidence, choice, wildcard=None):
                 try:
                     d += 1 + confidence[i]
                 except TypeError:
-                    d += int(1 + confidence[i])
+                    d += 1 + int(confidence[i])
         else:
             return d + (len(word) - i + 1) * 9
     return d
