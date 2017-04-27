@@ -377,6 +377,7 @@ def split_message(message, confidences):
 # takes headers and computes sums of confidence of bit values
 # TODO: rename this
 def sum_confidence(bitstrue, bitsfalse, headers):
+    # TODO: change this so it doesn't use timestamps
     for (msg, c, when) in headers:
         # convert to int if c is a string
         if type(c) is str:
@@ -456,6 +457,13 @@ def average_message(headers, transmitter):
         split_con = split[1]
         i[0] = split_msg
         i[1] = split_con
+        # remove timestamp
+        del i[2]
+
+    # main loop
+    for message_and_confidences in headers:
+        # zip together so we get pairs like 'SVR' [3, 3, 3]
+        for msg, con in zip(message_and_confidences[0], message_and_confidences[1]):
 
     # Look through the messages and compute sums of confidence of bit values
     sum_confidence(bitstrue, bitsfalse, headers)
