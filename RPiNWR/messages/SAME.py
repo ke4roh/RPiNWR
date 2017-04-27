@@ -263,6 +263,10 @@ def _truncate(avgmsg, confidences):
     avgmsg = avgmsg[0:l]
     confidences = confidences[0:l]
 
+    # type-checking in case we get a string instead of a list
+    if not type(confidences) == 'list':
+        confidences = [int(i) for i in confidences]
+
     confidence_chars = len(_END_SEQUENCE.replace("_", ""))
     # The confidence is greater for a match than each character being right.
     # TODO refine confidence calculation to make more sense
