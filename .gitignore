@@ -1,8 +1,1 @@
-*.iml
-build
-.idea
-*.pyc
-__pycache__
-*.egg-info
-.cache
-.eggs
+tests/dirty_messages_1.json

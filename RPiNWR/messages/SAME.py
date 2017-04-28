@@ -259,10 +259,11 @@ def _truncate(avgmsg, confidences):
     frame = '-___-___' + ('-______' * fips_count) + _END_SEQUENCE
     assert len(frame) == len(avgmsg)
 
+    avgmsg = [i for i in avgmsg]
     for i in range(0, len(avgmsg)):
         if frame[i] != '_':
             if avgmsg[i] != frame[i]:
-                avgmsg = mutate_string(avgmsg, i, frame[i])
+                avgmsg[i] = frame[i]
                 confidences[i] = end_confidence
             else:
                 confidences[i] = max(end_confidence, confidences[i])
