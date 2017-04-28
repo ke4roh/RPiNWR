@@ -116,20 +116,6 @@ def check_if_valid_code(codes, valid_list):
             code_list.append(c)
 
 
-# faux-mutates a string by transforming it into a list, making changes, and casting it back to a string
-def mutate_string(string, old_char, new_char):
-    """
-    :param string: string to "mutate"
-    :param old_char: an int representing the index of the char which we want to change
-    :param new_char: a char, this is what we want to change the old_char to
-    """
-    listmsg = list(string)
-    listmsg[old_char] = new_char
-    # new_str is what we're returning as the result of our mutation
-    new_str = ''.join(listmsg)
-    return new_str
-
-
 def _reconcile_character(bitstrue, bitsfalse, pattern):
     """
     :param bitstrue: an array of numbers specifying the weights favoring each bit in turn being true, LSB first
@@ -396,8 +382,7 @@ def sum_confidence(bitstrue, bitsfalse, headers):
                         bitstrue[(i << 3) + j] += 1 * confidence[i]
                     else:
                         bitsfalse[(i << 3) + j] += 1 * confidence[i]
-    # return 1 if successful
-    return 1
+    return None
 
 
 # takes a list of true bits, false bits, and confidences, and assembles characters from those lists
@@ -474,6 +459,9 @@ def average_message(headers, transmitter):
     # Figure out the length
     # avgmsg, confidences = _truncate(avgmsg, confidences)
 
+    # convert to list so we can make in-line changes by index
+    avgmsg = [i for i in avgmsg]
+
     # Check the character against the space of possible characters
     avgmsg = [i for i in avgmsg]
     for i in range(0, len(avgmsg)):
@@ -501,11 +489,7 @@ def average_message(headers, transmitter):
                 else:
                     byte_pattern_index += multipath + 1
 
-
             avgmsg[i] = c
-
-            mutate_string(avgmsg, i, c)
-
         confidences[i] = min(9, byte_confidence >> 3)
     avgmsg = "".join(avgmsg)
 
