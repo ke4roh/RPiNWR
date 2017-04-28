@@ -1,1 +1,9 @@
 tests/dirty_messages_1.json
+*.iml
+build
+.idea
+*.pyc
+__pycache__
+*.egg-info
+.cache
+.eggs
