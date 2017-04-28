@@ -102,20 +102,6 @@ VALID_DURATIONS = (
     (.9, '0330'), (1.1, '0400'), (.9, '0430'), (1.1, '0500'), (.9, '0530'), (1.1, '0600'))
 
 
-# faux-mutates a string by transforming it into a list, making changes, and casting it back to a string
-def mutate_string(string, old_char, new_char):
-    """
-    :param string: string to "mutate"
-    :param old_char: an int representing the index of the char which we want to change
-    :param new_char: a char, this is what we want to change the old_char to
-    """
-    listmsg = list(string)
-    listmsg[old_char] = new_char
-    # new_str is what we're returning as the result of our mutation
-    new_str = ''.join(listmsg)
-    return new_str
-
-
 def _reconcile_character(bitstrue, bitsfalse, pattern):
     """
     :param bitstrue: an array of numbers specifying the weights favoring each bit in turn being true, LSB first
@@ -331,6 +317,7 @@ def average_message(headers, transmitter):
     avgmsg, confidences = _truncate(avgmsg, confidences)
 
     # Check the character against the space of possible characters
+    avgmsg = [i for i in avgmsg]
     for i in range(0, len(avgmsg)):
         c = avgmsg[i]
         byte_confidence = confidences[i]
@@ -356,7 +343,7 @@ def average_message(headers, transmitter):
                 else:
                     byte_pattern_index += multipath + 1
 
-            mutate_string(avgmsg, i, c)
+            avgmsg[i] = c
         confidences[i] = min(9, byte_confidence >> 3)
     avgmsg = "".join(avgmsg)
 
