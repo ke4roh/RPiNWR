@@ -289,6 +289,8 @@ def split_message(message, confidences):
 
     # first, truncate the message and separate message and confidences
     truncated_message = _truncate(message, confidences)
+    # this is a stopgap fix to account for passing in a list from _truncate()
+    truncated_message = (''.join(truncated_message[0]), truncated_message[1])
     message = truncated_message[0]
     confidences = truncated_message[1]
 
