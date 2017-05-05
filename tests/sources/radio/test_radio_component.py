@@ -20,7 +20,7 @@ import unittest
 from RPiNWR.sources.radio.radio_component import Radio_Component
 import os
 import errno
-from test_sources import Watcher
+from tests.sources.test_sources import Watcher
 from circuits import Debugger
 
 class TestRadioComponent(unittest.TestCase):

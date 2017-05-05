@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 __author__ = 'ke4roh'
-# test code for alerting people
+# test NWR receiving (radio) code
 #
 # Copyright © 2017 James E. Scarborough
 #

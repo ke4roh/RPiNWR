@@ -19,10 +19,8 @@ import unittest
 from RPiNWR.messages import *
 import pickle
 import os
-from test_sources import Watcher
 from circuits import Component, Debugger, Event, BaseComponent, handler
 import time
-import re
 
 
 class ScoreWatcher(Component):

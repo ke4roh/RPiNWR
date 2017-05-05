@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 __author__ = 'ke4roh'
-# test code for alerting people
+# test code to represent messages from NWS
 #
 # Copyright © 2017 James E. Scarborough
 #
