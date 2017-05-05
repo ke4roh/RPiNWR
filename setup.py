@@ -3,6 +3,10 @@
 # look here: http://python-packaging-user-guide.readthedocs.org/en/latest/current/
 
 from setuptools import setup, find_packages
+import faulthandler
+import signal
+
+faulthandler.register(signal.SIGUSR1)
 
 with open('README.md') as f:
     readme = f.read()
