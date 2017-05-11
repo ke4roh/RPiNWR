@@ -1,6 +1,7 @@
+"""RPiNWR tests"""
 # -*- coding: utf-8 -*-
 __author__ = 'ke4roh'
-# test code for alerting people
+# Test the weather radio
 #
 # Copyright © 2017 James E. Scarborough
 #

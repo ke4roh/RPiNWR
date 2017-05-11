@@ -111,7 +111,7 @@ class TestAtomCAPFeed(unittest.TestCase):
 
         :return:
         """
-        wfo = set(["KDDC", "KGLD", "KWNS"])  # This is where the action was when I was capturing messages
+        wfo = {"KDDC", "KGLD", "KWNS"}  # This is where the action was when I was capturing messages
         specific_wfo_events = []
 
         def atom_event_handler(event):

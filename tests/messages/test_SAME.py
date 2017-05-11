@@ -43,8 +43,11 @@ class TestSAME(unittest.TestCase):
     @staticmethod
     def add_time(msg_tuple, msg_time=None, order=0):
         """
+        For generating messages that look like they were recorded from the radio, they need to also have
+        timestamps per individual copy of the header transmitted by the radio.  This function adds those
+        timestamps, taking into account the transmission time per character and the pause in between header lines.
+
         :param msg_tuple: a tuple of message and confidence (confidence is just passed through), or 3 of these
-        :param start: If provided, the start time of the message, otherwise it will be constructed from the message
         :param order: The number of headers that preceded this one after the given start time
         :return:
         """
@@ -232,7 +235,7 @@ class TestSAME(unittest.TestCase):
                 '333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333300000'
             )], msg_time)
 
-        (msg, confidence) = average_message(messages)
+        (msg, confidence) = average_message(messages, transmitter="WXL58")
 
         # Now, because this message was so dirty, let's assert a certain level of accuracy, which can be tuned upward
         # as the average_message algorithm is improved.

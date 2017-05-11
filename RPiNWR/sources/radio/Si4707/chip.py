@@ -430,7 +430,7 @@ class Future(object):
         self.__exception = None
         self.__complete = False
 
-    def get(self, timeout=None):
+    def get(self, timeout=30):
         """
         :return: the result of the operation once it is ready, blocking until then
         """
