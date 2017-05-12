@@ -205,11 +205,12 @@ class TestSAME(unittest.TestCase):
 
             msg["calculated"] = (msg["calculated"][0], "".join([str(x) for x in msg["calculated"][1]]))
 
-        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "dirty_messages_1.json"), "w") as f:
+        # added encoding for Windows machines
+        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "dirty_messages_1.json"), "w", encoding="utf-8") as f:
             json.dump(messages, f, indent=4, sort_keys=True, ensure_ascii=False)
 
     def load_dirty_messages(self):
-        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "dirty_messages.json"), "r") as f:
+        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "dirty_messages.json"), "r", encoding="utf-8") as f:
             messages = json.load(f)
         return messages
 

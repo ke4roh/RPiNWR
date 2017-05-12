@@ -1,3 +1,4 @@
+tests/dirty_messages_1.json
 *.iml
 build
 .idea
