@@ -368,7 +368,7 @@ def split_message(message, confidences):
 # TODO: rename this
 def sum_confidence(bitstrue, bitsfalse, headers):
     # TODO: change this so it doesn't use timestamps
-    for (msg, c, when) in headers:
+    for (msg, c) in headers:
         # convert to int if c is a string
         if type(c) is str:
             confidence = [int(x) for x in c]
@@ -454,12 +454,7 @@ def average_message(headers, transmitter):
 
     # for msg, con in zip(message_and_confidences[0], message_and_confidences[1]):
 
-    '''
-   
-    for message_and_confidences in headers:
-        for codes in [_DURATION_NUMBERS, _EVENT_CODES, _ORIGINATOR_CODES]:
-            if check_if_valid_code(codes, msg):
-    '''
+    # [originator_code, event_code, location_codes, purge_time, exact_time, callsign
 
     # HEADERS:
 
@@ -476,23 +471,26 @@ def average_message(headers, transmitter):
 
     # Check if we have valid codes already
     for i in range(0, len(headers)-1):
+        valid_code = ''
         for j in valid_code_list:
-            # check against each valid code list
-            valid_code = check_if_valid_code([code[i] for code in headers], j)
-            # if it's valid, add it to our final message
-            if valid_code:
-                avgmsg += valid_code
-            # if it's not valid, we have to approximate
-            else:
-                # zip together so we get pairs like 'SVR' [3, 3, 3]
-                # [i[0][0] for i in headers] == [<code>, <code>, <code>]
-                # this is a triplet of each message chunk from each of the three messages, e.g. [WGV, WG%, W%!]
-                # TODO: make sure this works!
-                code_triplet = [c[i][0] for c in headers]
-                sum_confidence(bitstrue, bitsfalse, code_triplet)
+            for k in j:
+                # check against each valid code list
+                # TODO: fix this so it passes in the right list as arg
+                valid_code = check_if_valid_code([code[i] for code in headers], k)
+        # if it's valid, add it to our final message
+        if valid_code:
+            avgmsg += valid_code
+        # if it's not valid, we have to approximate
+        else:
+            # zip together so we get pairs like 'SVR' [3, 3, 3]
+            # [i[0][0] for i in headers] == [<code>, <code>, <code>]
+            # this is a triplet of each message chunk from each of the three messages, e.g. [WGV, WG%, W%!]
+            # TODO: make sure this works!
+            msg_con = list(zip([c[i][0] for c in headers], [c[i+1][0] for c in headers]))
+            sum_confidence(bitstrue, bitsfalse, msg_con)
 
     # Look through the messages and compute sums of confidence of bit values
-    sum_confidence(bitstrue, bitsfalse, headers)
+    # sum_confidence(bitstrue, bitsfalse, headers)
 
     # Then combine that information into a single aggregate message
     avgmsg = assemble_char(bitstrue, bitsfalse, confidences, size)
