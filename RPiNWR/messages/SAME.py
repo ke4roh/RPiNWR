@@ -365,9 +365,8 @@ def split_message(message, confidences):
 
 
 # takes headers and computes sums of confidence of bit values
-# TODO: rename this
+
 def sum_confidence(bitstrue, bitsfalse, headers):
-    # TODO: change this so it doesn't use timestamps
     for (msg, c) in headers:
         # convert to int if c is a string
         if type(c) is str:
@@ -448,16 +447,10 @@ def average_message(headers, transmitter):
         split_con = split[1]
         i[0] = split_msg
         i[1] = split_con
-        # remove timestamp
-        del i[2]
-
-
-    # for msg, con in zip(message_and_confidences[0], message_and_confidences[1]):
 
     # [originator_code, event_code, location_codes, purge_time, exact_time, callsign
 
     # HEADERS:
-
     '''
     [['WḀR', 'SVR', ['0Ḁ7183'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
     [[3, 3, 3], [3, 3, 3], [[3, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 2]]]
@@ -475,8 +468,7 @@ def average_message(headers, transmitter):
         for j in valid_code_list:
             for k in j:
                 # check against each valid code list
-                # TODO: fix this so it passes in the right list as arg
-                valid_code = check_if_valid_code([code[i] for code in headers], k)
+                valid_code = check_if_valid_code([code[0][i] for code in headers], k)
         # if it's valid, add it to our final message
         if valid_code:
             avgmsg += valid_code
@@ -486,7 +478,7 @@ def average_message(headers, transmitter):
             # [i[0][0] for i in headers] == [<code>, <code>, <code>]
             # this is a triplet of each message chunk from each of the three messages, e.g. [WGV, WG%, W%!]
             # TODO: make sure this works!
-            msg_con = list(zip([c[i][0] for c in headers], [c[i+1][0] for c in headers]))
+            msg_con = list(zip([c[0][i] for c in headers], [c[1][i] for c in headers]))
             sum_confidence(bitstrue, bitsfalse, msg_con)
 
     # Look through the messages and compute sums of confidence of bit values
@@ -496,7 +488,7 @@ def average_message(headers, transmitter):
     avgmsg = assemble_char(bitstrue, bitsfalse, confidences, size)
 
     # Figure out the length
-    # avgmsg, confidences = _truncate(avgmsg, confidences)
+    avgmsg, confidences = _truncate(avgmsg, confidences)
 
     # convert to list so we can make in-line changes by index
     avgmsg = [i for i in avgmsg]
