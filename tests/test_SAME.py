@@ -164,11 +164,47 @@ class TestSAME(unittest.TestCase):
         for msg in messages:
             msg["calculated"] = average_message(msg["headers"], msg["transmitter"])
 
+            # TODO: Fix this issue and combine messages:
+
+            '''
+            Right(feature):
+            'headers':
+            [['-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀ6ḀỿỨỼỿ',
+              '33333333333333333333333333333323333333333000000',
+              1462219406.538715],
+             ['-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀjḀẻẜẓỿ',
+              '33333333333333333333333333333333333333333000000',
+              1462219408.5504122],
+             ['-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀḖḀỻờ~ỿ',
+              '33333323333333333333333333333333333333333000000',
+              1462219410.5092943]]
+            
+            Current(dev):
+            'headers':
+            [[['WḀR', 'SVR', ['0Ḁ7183'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
+              [[3, 3, 3], [3, 3, 3], [[3, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 2]],
+              1462219406.538715],
+             [['WḀR', 'SVR', ['0Ḁ7183'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
+              [[3, 3, 3], [3, 3, 3], [[3, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 3]],
+              1462219408.5504122],
+             [['WḀR', 'SVR', ['0Ḁ7183'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
+              [[3, 3, 3], [3, 3, 3], [[2, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 3]],
+              1462219410.5092943]]
+            '''
+
             # Make the headers readable in output
             for i in range(0, len(msg["headers"])):
+                # make actual message readable, "chunk" refers to a piece of the disassembled message in our headers
+                for chunk in msg["headers"][i][0]:
+                    # this is to handle the lists of county codes
+                    if type(chunk) is list:
+                        chunk = str("".join(chunk))
+                # TODO: fix this
+                msg["headers"][i][0] = "".join(msg["headers"][i][0])
+                msg["headers"][i][0] = unicodify(msg["headers"][i][0])
+                # join confidences together into string
                 if type(msg["headers"][i][1]) is list:
                     msg["headers"][i][1] = "".join([str(x) for x in msg["headers"][i][1]])
-                msg["headers"][i][0] = unicodify(msg["headers"][i][0])
 
             if "clean" in msg:
                 clean_message = msg["clean"]
