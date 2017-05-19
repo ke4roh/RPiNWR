@@ -392,6 +392,7 @@ def sum_confidence(bitstrue, bitsfalse, headers):
 def assemble_char(bitstrue, bitsfalse, confidences, size):
     # the resultant averaged string we get from the bits
     avgstr= []
+    # TODO: fix this so it works for complete message, right now it's just doing the first 3 bits over and over
     for i in range(0, size):
         # Assemble a character from the various bits
         c = 0
@@ -478,15 +479,13 @@ def average_message(headers, transmitter):
             # zip together so we get pairs like 'SVR' [3, 3, 3]
             # [i[0][0] for i in headers] == [<code>, <code>, <code>]
             # this is a triplet of each message chunk from each of the three messages, e.g. [WGV, WG%, W%!]
-            # TODO: make sure this works!
             msg_con = list(zip([c[0][i] for c in headers], [c[1][i] for c in headers]))
+            # Look through the messages and compute sums of confidence of bit values
             sum_confidence(bitstrue, bitsfalse, msg_con)
 
-    # Look through the messages and compute sums of confidence of bit values
-    # sum_confidence(bitstrue, bitsfalse, headers)
-
-    # Then combine that information into a single aggregate message
-    avgmsg = assemble_char(bitstrue, bitsfalse, confidences, size)
+            # TODO: fix this so it doesn't work against the 'size' we defined at the top of the function
+            # Then combine that information into a single aggregate message
+            avgmsg += assemble_char(bitstrue, bitsfalse, confidences, size)
 
     # Figure out the length
     avgmsg, confidences = _truncate(avgmsg, confidences)
