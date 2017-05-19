@@ -195,11 +195,12 @@ class TestSAME(unittest.TestCase):
             # Make the headers readable in output
             for i in range(0, len(msg["headers"])):
                 # make actual message readable, "chunk" refers to a piece of the disassembled message in our headers
+                count = 0
                 for chunk in msg["headers"][i][0]:
                     # this is to handle the lists of county codes
                     if type(chunk) is list:
-                        chunk = str("".join(chunk))
-                # TODO: fix this
+                        msg["headers"][i][0][count] = str("".join(chunk))
+                    count += 1
                 msg["headers"][i][0] = "".join(msg["headers"][i][0])
                 msg["headers"][i][0] = unicodify(msg["headers"][i][0])
                 # join confidences together into string
@@ -238,7 +239,7 @@ class TestSAME(unittest.TestCase):
 
             msg["calculated"] = (msg["calculated"][0], "".join([str(x) for x in msg["calculated"][1]]))
 
-        # added encoding for Windows machines
+        # added utf-8 encoding for Windows machines
         with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "dirty_messages_1.json"), "w", encoding="utf-8") as f:
             json.dump(messages, f, indent=4, sort_keys=True, ensure_ascii=False)
 

@@ -463,6 +463,7 @@ def average_message(headers, transmitter):
     # main loop
 
     # Check if we have valid codes already
+    # TODO: improve this so it doesn't check every code against every part of the message
     for i in range(0, len(headers)-1):
         valid_code = ''
         for j in valid_code_list:
