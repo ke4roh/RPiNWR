@@ -429,6 +429,7 @@ def average_message(headers, transmitter):
     from ..sources.radio.nwr_data import get_counties, get_wfo
 
     # init
+    # TODO: move these within the main for loop
     size = max([len(x[0]) for x in headers])
     bitstrue = [0] * 8 * size
     bitsfalse = [0] * 8 * size
@@ -449,7 +450,7 @@ def average_message(headers, transmitter):
         i[0] = split_msg
         i[1] = split_con
 
-    # [originator_code, event_code, location_codes, purge_time, exact_time, callsign
+    # [originator_code, event_code, location_codes, purge_time, exact_time, callsign]
 
     # HEADERS:
     '''
@@ -461,6 +462,14 @@ def average_message(headers, transmitter):
     [[3, 3, 3], [3, 3, 3], [[2, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 3]]]
     '''
 
+    # TODO:
+    # 1. make Object (as in member of a class, MessageChunk NOT SAMEMessage) for each chunk in message, object contains chars and confidences
+    # 2. make them respect subtraction operator (WXR[bits]-WAR[bits], 3 - 2)
+    # when you subtract (say) WXR-WAR, you get the answer + the new (changed) confidence
+    # 3. subtraction should return a new instance of the object
+    # 4. pick the best choice (least distance from the received data) (highest sum of confidences = least distance)
+    # :return: ['wxr-sad-021392-9023091-093-KWX/THRE', '33333333333333333333']
+
     # main loop
 
     # Check if we have valid codes already
@@ -470,6 +479,7 @@ def average_message(headers, transmitter):
         for j in valid_code_list:
             for k in j:
                 # check against each valid code list
+                # [WXR, WAR, WRR]
                 valid_code = check_if_valid_code([code[0][i] for code in headers], k)
         # if it's valid, add it to our final message
         if valid_code:
@@ -479,6 +489,7 @@ def average_message(headers, transmitter):
             # zip together so we get pairs like 'SVR' [3, 3, 3]
             # [i[0][0] for i in headers] == [<code>, <code>, <code>]
             # this is a triplet of each message chunk from each of the three messages, e.g. [WGV, WG%, W%!]
+            # ([WXR, [3, 3, 3])
             msg_con = list(zip([c[0][i] for c in headers], [c[1][i] for c in headers]))
             # Look through the messages and compute sums of confidence of bit values
             sum_confidence(bitstrue, bitsfalse, msg_con)
