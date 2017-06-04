@@ -54,11 +54,12 @@ class Radio_Component(BaseComponent):
     * Context functions by event (write bytes, read bytes, set GPIO (relays))
     """
 
-    def __init__(self, args=None):
+    def __init__(self, args=None, clock=time.time):
         super().__init__()
         self.radio = None
         self.context = None
         self.ready = False
+        self.clock = clock
         self.logger = logging.getLogger("RPiNWR")
         clparser = argparse.ArgumentParser()
         clparser.add_argument("--off-after", default=None)
@@ -144,6 +145,7 @@ class Radio_Component(BaseComponent):
                 self.context = context
                 with Si4707(context) as radio:
                     self.radio = radio
+                    radio.clock = self.clock
                     radio.register_event_listener(self.log_event)
                     radio.register_event_listener(self.log_tune)
                     radio.register_event_listener(self.unmute_for_message)
