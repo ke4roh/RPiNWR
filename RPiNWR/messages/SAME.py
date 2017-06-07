@@ -407,6 +407,31 @@ def assemble_char(bitstrue, bitsfalse, confidences, size):
     return avgstr
 
 
+class MessageChunk:
+    """
+    1. make Object (as in member of a class, MessageChunk NOT SAMEMessage) for each chunk in message,
+    object contains chars and confidences
+    2. make them respect subtraction operator (WXR[bits]-WAR[bits], 3 - 2)
+    when you subtract (say) WXR-WAR, you get the answer + the new (changed) confidence
+    3. subtraction should return a new instance of the object
+    4. pick the best choice (least distance from the received data) (highest sum of confidences = least distance)
+    :return: ['wxr-sad-021392-9023091-093-KWX/THRE', '33333333333333333333']
+    """
+
+    def __init__(self, chars, confidences):
+        self.chars = []
+        self.confidences = []
+
+    @staticmethod
+    def subtract_bits(chunks):
+        total = 0
+        count = 0
+        while len(chunks) > 1:
+            total += ord(chunks[count]) - ord(chunks)[count-1]
+            count += 1
+            chunks.pop()
+        return total
+
 def average_message(headers, transmitter):
     """
     Compute the correct message by averaging headers, restricting input to the valid character set, and filling
@@ -461,14 +486,6 @@ def average_message(headers, transmitter):
     [['WḀR', 'SVR', ['0Ḁ7183'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
     [[3, 3, 3], [3, 3, 3], [[2, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 3]]]
     '''
-
-    # TODO:
-    # 1. make Object (as in member of a class, MessageChunk NOT SAMEMessage) for each chunk in message, object contains chars and confidences
-    # 2. make them respect subtraction operator (WXR[bits]-WAR[bits], 3 - 2)
-    # when you subtract (say) WXR-WAR, you get the answer + the new (changed) confidence
-    # 3. subtraction should return a new instance of the object
-    # 4. pick the best choice (least distance from the received data) (highest sum of confidences = least distance)
-    # :return: ['wxr-sad-021392-9023091-093-KWX/THRE', '33333333333333333333']
 
     # main loop
 
