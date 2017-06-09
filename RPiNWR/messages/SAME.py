@@ -363,9 +363,8 @@ def split_message(message, confidences):
 
     return [final_message, final_confidences]
 
-
+'''
 # takes headers and computes sums of confidence of bit values
-
 def sum_confidence(bitstrue, bitsfalse, headers):
     for (msg, c) in headers:
         # convert to int if c is a string
@@ -386,7 +385,7 @@ def sum_confidence(bitstrue, bitsfalse, headers):
                     else:
                         bitsfalse[(i << 3) + j] += 1 * confidence[i]
     return None
-
+'''
 
 # takes a list of true bits, false bits, and confidences, and assembles characters from those lists
 def assemble_char(bitstrue, bitsfalse, confidences, size):
@@ -419,18 +418,56 @@ class MessageChunk:
     """
 
     def __init__(self, chars, confidences):
-        self.chars = []
-        self.confidences = []
+        self.chars = chars
+        self.confidences = confidences
 
     @staticmethod
-    def subtract_bits(chunks):
+    def subtract_bits(chars_array):
         total = 0
-        count = 0
-        while len(chunks) > 1:
-            total += ord(chunks[count]) - ord(chunks)[count-1]
-            count += 1
-            chunks.pop()
+        index_count = 0
+
+        '''
+        we want to subtract vertically, e.g.
+          '(W)WW'
+        - '(W)XE'
+        - '(X)WG'
+        -------
+            RESULT
+        '''
+
+        while index_count <= len(chars_array)-1:
+            total += ord(chars_array[0][index_count])\
+                   - ord(chars_array[1][index_count])\
+                   - ord(chars_array[2][index_count])
+            index_count += 1
         return total
+
+    # takes headers and computes sums of confidence of bit values
+    @staticmethod
+    def sum_confidence(chunk):
+        size = len(chunk.confidences)
+        bitstrue = [0] * 8 * size
+        bitsfalse = [0] * 8 * size
+        for (c) in chunk.confidences:
+            # convert to int if c is a string
+            if type(c) is str:
+                confidence = [int(x) for x in c]
+            # otherwise leave it as a list of ints
+            else:
+                confidence = c
+            # Loop through the characters of the message
+            for i in range(0, len(msg)):
+                if ord(msg[i]):  # null characters don't count b/c they indicate no data, not all 0 bits
+                    # Loop through bits and apply confidence for true or false
+                    for j in range(0, 8):
+                        # if the last bit (e.g. 00001) is a 1:
+                        if (ord(msg[i]) >> j) & 1:
+                            # then add it to the bitstrue (or bitsfalse) bits with that bit's confidence level
+                            bitstrue[(i << 3) + j] += 1 * confidence[i]
+                        else:
+                            bitsfalse[(i << 3) + j] += 1 * confidence[i]
+        return bitstrue, bitsfalse
+
 
 def average_message(headers, transmitter):
     """
