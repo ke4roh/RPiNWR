@@ -507,7 +507,7 @@ class TestSAME(unittest.TestCase):
 
     def test_subtract_bits(self):
         test_chunk = SAME.MessageChunk(['WGX', 'WWW', 'W$X'], [[0, 1, 2], [0, 0, 0], [9, 9, 9]])
-        self.assertEqual(test_chunk.subtract_bits([]), 7)
+        self.assertEqual(test_chunk.subtract_bits(test_chunk.chars), -226)
 
     def test__truncate(self):
 
