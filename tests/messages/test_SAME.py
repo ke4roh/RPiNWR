@@ -509,6 +509,56 @@ class TestSAME(unittest.TestCase):
         test_chunk = SAME.MessageChunk(['WGX', 'WWW', 'W$X'], [[0, 1, 2], [0, 0, 0], [9, 9, 9]])
         self.assertEqual(test_chunk.subtract_bits(test_chunk.chars), -226)
 
+    def test_MessageChunk(self):
+
+        test_headers = [['-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀ6ḀỿỨỼỿ',
+          '33333333333333333333333333333323333333333000000',
+          1462219406.538715],
+         ['-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀjḀẻẜẓỿ',
+          '33333333333333333333333333333333333333333000000',
+          1462219408.5504122],
+         ['-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀḖḀỻờ~ỿ',
+          '33333323333333333333333333333333333333333000000',
+          1462219410.5092943]]
+
+        split_headers = []
+        for msg, conf, ts in test_headers:
+            split_headers.append(SAME.split_message(msg, conf))
+
+        # HEADERS:
+        '''
+        [['WḀR', 'SVR', ['0Ḁ7183'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
+        [[3, 3, 3], [3, 3, 3], [[3, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 2]]]
+        [['WḀR', 'SVR', ['0Ḁ7183'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
+        [[3, 3, 3], [3, 3, 3], [[3, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 3]]]
+        [['WḀR', 'SVR', ['0Ḁ7183'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
+        [[3, 3, 3], [3, 3, 3], [[2, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 3]]]
+        '''
+
+        for i in range(0, len(split_headers[0][0])):
+            zipped_list = list(zip([c[0][i] for c in split_headers], [c[1][i] for c in split_headers]))
+            msg_list = [d[0] for d in zipped_list]
+            conf_list = [d[1] for d in zipped_list]
+            # print(msg_list, conf_list)
+            test_active_chunk = SAME.MessageChunk(msg_list, conf_list)
+            print(test_active_chunk.chars, test_active_chunk.confidences)
+
+        '''
+        [('WḀR', [3, 3, 3]), ('WḀR', [3, 3, 3]), ('WḀR', [3, 3, 3])]
+        [('SVR', [3, 3, 3]), ('SVR', [3, 3, 3]), ('SVR', [3, 3, 3])]
+        [(['0Ḁ7183'], [[3, 3, 3, 3, 3, 3]]), (['0Ḁ7183'], [[3, 3, 3, 3, 3, 3]]), (['0Ḁ7183'], [[2, 3, 3, 3, 3, 3]])]
+        [('00Ḁ5', [3, 3, 3, 3]), ('00Ḁ5', [3, 3, 3, 3]), ('00Ḁ5', [3, 3, 3, 3])]
+        [('12320Ḁ3', [3, 3, 3, 3, 3, 3, 3]), ('12320Ḁ3', [3, 3, 3, 3, 3, 3, 3]), ('12320Ḁ3', [3, 3, 3, 3, 3, 3, 3])]
+        [('KRAH/NWS', [3, 3, 3, 3, 3, 3, 3, 2]), ('KRAH/NWS', [3, 3, 3, 3, 3, 3, 3, 3]), ('KRAH/NWS', [3, 3, 3, 3, 3, 3, 3, 3])
+        '''
+
+        test_chars = ['WGX', 'WWW', 'W$X']
+        test_confidences = [[0, 1, 2], [0, 0, 0], [9, 9, 9]]
+        test_chunk = SAME.MessageChunk(test_chars, test_confidences)
+        # print(test_chunk.chars, test_chunk.confidences)
+        self.assertEqual(test_chunk.chars, test_chars)
+        self.assertEqual(test_chunk.confidences, test_confidences)
+
     def test__truncate(self):
 
         # NOTES:

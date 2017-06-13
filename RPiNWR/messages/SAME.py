@@ -387,6 +387,7 @@ def sum_confidence(bitstrue, bitsfalse, headers):
     return None
 '''
 
+'''
 # takes a list of true bits, false bits, and confidences, and assembles characters from those lists
 def assemble_char(bitstrue, bitsfalse, confidences, size):
     # the resultant averaged string we get from the bits
@@ -404,6 +405,7 @@ def assemble_char(bitstrue, bitsfalse, confidences, size):
             confidences[i] = 0
         avgstr.append(chr(c))
     return avgstr
+'''
 
 
 class MessageChunk:
@@ -418,8 +420,10 @@ class MessageChunk:
     """
 
     def __init__(self, chars, confidences):
-        self.chars = chars
-        self.confidences = confidences
+
+    # TODO: fix constructor so it handles country codes e.g. (['0Ḁ7183'], [[3, 3, 3, 3, 3, 3]])
+        bitstrue, bitsfalse = self.sum_confidence(chars, confidences)
+        self.chars, self.confidences = self.assemble_char(bitstrue, bitsfalse, confidences)
 
     @staticmethod
     def subtract_bits(chars_array):
@@ -444,30 +448,50 @@ class MessageChunk:
 
     # takes headers and computes sums of confidence of bit values
     @staticmethod
-    def sum_confidence(chunk):
-        size = len(chunk.confidences)
+    def sum_confidence(chars, confidences):
+        size = len(confidences)
         bitstrue = [0] * 8 * size
         bitsfalse = [0] * 8 * size
-        for (c) in chunk.confidences:
+        for (c) in confidences:
             # convert to int if c is a string
             if type(c) is str:
                 confidence = [int(x) for x in c]
             # otherwise leave it as a list of ints
             else:
                 confidence = c
-            # Loop through the characters of the message
-            for i in range(0, len(msg)):
-                if ord(msg[i]):  # null characters don't count b/c they indicate no data, not all 0 bits
-                    # Loop through bits and apply confidence for true or false
-                    for j in range(0, 8):
-                        # if the last bit (e.g. 00001) is a 1:
-                        if (ord(msg[i]) >> j) & 1:
-                            # then add it to the bitstrue (or bitsfalse) bits with that bit's confidence level
-                            bitstrue[(i << 3) + j] += 1 * confidence[i]
-                        else:
-                            bitsfalse[(i << 3) + j] += 1 * confidence[i]
+            # char_group == chunks of message, e.g. "WXR"
+            for char_group in chars:
+                # Loop through the characters of the message
+                for i in range(0, len(char_group)):
+                    if ord(char_group[i]):  # null characters don't count b/c they indicate no data, not all 0 bits
+                        # Loop through bits and apply confidence for true or false
+                        for j in range(0, 8):
+                            # if the last bit (e.g. 00001) is a 1:
+                            if (ord(char_group[i]) >> j) & 1:
+                                # then add it to the bitstrue (or bitsfalse) bits with that bit's confidence level
+                                bitstrue[(i << 3) + j] += 1 * confidence[i]
+                            else:
+                                bitsfalse[(i << 3) + j] += 1 * confidence[i]
         return bitstrue, bitsfalse
 
+    # takes a list of true bits, false bits, and confidences, and assembles characters from those lists
+    @staticmethod
+    def assemble_char(bitstrue, bitsfalse, confidences):
+        # the resultant averaged group of chars we get from the bits
+        avgchars= []
+        # TODO: fix this so it works for complete message, right now it's just doing the first 3 bits over and over
+        for i in range(0, len(confidences)):
+            # Assemble a character from the various bits
+            c = 0
+            confidences[i] = 0
+            for j in range(0, 8):
+                bit_weight = (bitstrue[(i << 3) + j] - bitsfalse[(i << 3) + j])
+                c |= (bit_weight > 0) << j
+                confidences[i] += abs(bit_weight)
+            if c == 0:
+                confidences[i] = 0
+            avgchars.append(chr(c))
+        return avgchars, confidences
 
 def average_message(headers, transmitter):
     """
