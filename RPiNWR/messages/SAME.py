@@ -416,6 +416,8 @@ class MessageChunk:
     when you subtract (say) WXR-WAR, you get the answer + the new (changed) confidence
     3. subtraction should return a new instance of the object
     4. pick the best choice (least distance from the received data) (highest sum of confidences = least distance)
+    :chars: group of three chunks of chars, e.g. ['WXR', 'WXX', 'WXZ']
+    :confidences: group of three groups of confidences which apply to chars, e.g. [[3, 3, 3]. [3, 2, 3,], [1, 2, 3]]
     :return: ['wxr-sad-021392-9023091-093-KWX/THRE', '33333333333333333333']
     """
 
