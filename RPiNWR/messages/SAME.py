@@ -423,30 +423,8 @@ class MessageChunk:
 
     def __init__(self, chars, confidences):
 
-    # TODO: fix constructor so it handles country codes e.g. (['0Ḁ7183'], [[3, 3, 3, 3, 3, 3]])
         bitstrue, bitsfalse = self.sum_confidence(chars, confidences)
         self.chars, self.confidences = self.assemble_char(bitstrue, bitsfalse, confidences)
-
-    @staticmethod
-    def subtract_bits(chars_array):
-        total = 0
-        index_count = 0
-
-        '''
-        we want to subtract vertically, e.g.
-          '(W)WW'
-        - '(W)XE'
-        - '(X)WG'
-        -------
-            RESULT
-        '''
-
-        while index_count <= len(chars_array)-1:
-            total += ord(chars_array[0][index_count])\
-                   - ord(chars_array[1][index_count])\
-                   - ord(chars_array[2][index_count])
-            index_count += 1
-        return total
 
     # takes headers and computes sums of confidence of bit values
     @staticmethod
@@ -495,6 +473,7 @@ class MessageChunk:
             avgchars.append(chr(c))
         return avgchars, confidences
 
+
 def average_message(headers, transmitter):
     """
     Compute the correct message by averaging headers, restricting input to the valid character set, and filling
@@ -524,6 +503,7 @@ def average_message(headers, transmitter):
     confidences = [0] * size
     byte_pattern_index = 0
     avgmsg = ''
+    chunks = []
     valid_code_list = [_DURATION_NUMBERS, _EVENT_CODES, _ORIGINATOR_CODES]
 
     # TODO: change this so it checks each part of the message separately
@@ -554,7 +534,12 @@ def average_message(headers, transmitter):
 
     # Check if we have valid codes already
     # TODO: improve this so it doesn't check every code against every part of the message
-    for i in range(0, len(headers)-1):
+    # TODO: make sure this checks for county codes (arrays)
+    # length of the broken up message + length of the county codes array
+    for i in range(0, len(headers[0])-1 + len(headers[0][2]-1)):
+        if type(headers[i]) == list:
+            for code in list:
+                # do the bottom loop
         valid_code = ''
         for j in valid_code_list:
             for k in j:
@@ -566,17 +551,23 @@ def average_message(headers, transmitter):
             avgmsg += valid_code
         # if it's not valid, we have to approximate
         else:
-            # zip together so we get pairs like 'SVR' [3, 3, 3]
-            # [i[0][0] for i in headers] == [<code>, <code>, <code>]
-            # this is a triplet of each message chunk from each of the three messages, e.g. [WGV, WG%, W%!]
-            # ([WXR, [3, 3, 3])
+            '''
+            this is a triplet of each message chunk from each of the three messages, e.g. [WGV, WG%, W%!]
+            [('WXR', [3, 3, 3]), ('WXR', [3, 3, 3]), ('WXR', [3, 3, 3])]
+            '''
             msg_con = list(zip([c[0][i] for c in headers], [c[1][i] for c in headers]))
+            # ['WXR', 'WXX', 'WXR']
+            msgs = [c[0] for c in msg_con]
+            # [[3, 3, 3,], [3, 3, 3], [3, 2, 3]]
+            cons = [c[1] for c in msg_con]
+            chunk = MessageChunk(msgs, cons)
             # Look through the messages and compute sums of confidence of bit values
-            sum_confidence(bitstrue, bitsfalse, msg_con)
+            # sum_confidence(bitstrue, bitsfalse, msg_con)
 
             # TODO: fix this so it doesn't work against the 'size' we defined at the top of the function
             # Then combine that information into a single aggregate message
-            avgmsg += assemble_char(bitstrue, bitsfalse, confidences, size)
+            # avgmsg += assemble_char(bitstrue, bitsfalse, confidences, size)
+            chunks.append(chunk)
 
     # Figure out the length
     avgmsg, confidences = _truncate(avgmsg, confidences)
