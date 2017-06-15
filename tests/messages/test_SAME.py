@@ -505,10 +505,6 @@ class TestSAME(unittest.TestCase):
         self.assertEqual(test_msg, expected_result)
         self.assertEqual(test_msg_2, expected_result_2)
 
-    def test_subtract_bits(self):
-        test_chunk = SAME.MessageChunk(['WGX', 'WWW', 'W$X'], [[0, 1, 2], [0, 0, 0], [9, 9, 9]])
-        self.assertEqual(test_chunk.subtract_bits(test_chunk.chars), -226)
-
     def test_MessageChunk(self):
 
         test_headers = [['-WḀR-SVR-0Ḁ7183-0Ḁ7182+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀ6ḀỿỨỼỿ',
