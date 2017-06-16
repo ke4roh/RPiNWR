@@ -559,6 +559,14 @@ class TestSAME(unittest.TestCase):
         self.assertEqual(test_chunk.chars, test_chars)
         self.assertEqual(test_chunk.confidences, test_confidences)
 
+    def test_dearray(self):
+        input_array_chars = ['WḀR', 'SVR', ['0Ḁ7183', '0Ḁ7122'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS']
+        input_array_confs = [[3, 3, 3], [3, 3, 3], [[3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 3]]
+        expected_array_chars = ['WḀR', 'SVR', '0Ḁ7183', '0Ḁ7122', '00Ḁ5', '12320Ḁ3', 'KRAH/NWS']
+        expected_array_confs = [[3, 3, 3], [3, 3, 3], [3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 3]]
+        self.assertEqual(dearray(input_array_chars), expected_array_chars)
+        self.assertEqual(dearray(input_array_confs), expected_array_confs)
+
     def test__truncate(self):
 
         # NOTES:
