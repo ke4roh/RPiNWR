@@ -324,6 +324,7 @@ def split_message(message, confidences):
         # first half:
         originator_code = (first_half_split[1])
         event_code = (first_half_split[2])
+        # TODO: change this so it doesn't construct arrays
         location_codes = []
         for i in range(3, len(first_half_split)):
             location_codes.append(first_half_split[i])
@@ -474,6 +475,24 @@ class MessageChunk:
         return avgchars, confidences
 
 
+# this is for dealing with country code arrays in headers, changes them to individual entries instead of arrayss
+def dearray(array):
+    # keep track of where we are in the array so we know where to reinsert members
+    index = 0
+    for i in array:
+        if type(i) is list:
+            # this is what we want to free from its array prison
+            array_to_dearray = array[index]
+            del array[index]
+            # this needs to be a temp value so we don't screw up the actual index
+            insertion_index = index
+            for j in array_to_dearray:
+                array.insert(insertion_index, j)
+                insertion_index += 1
+        index += 1
+    return array
+
+
 def average_message(headers, transmitter):
     """
     Compute the correct message by averaging headers, restricting input to the valid character set, and filling
@@ -522,24 +541,21 @@ def average_message(headers, transmitter):
 
     # HEADERS:
     '''
-    [['WḀR', 'SVR', ['0Ḁ7183'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
-    [[3, 3, 3], [3, 3, 3], [[3, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 2]]]
-    [['WḀR', 'SVR', ['0Ḁ7183'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
-    [[3, 3, 3], [3, 3, 3], [[3, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 3]]]
-    [['WḀR', 'SVR', ['0Ḁ7183'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
-    [[3, 3, 3], [3, 3, 3], [[2, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 3]]]
+    [['WḀR', 'SVR', ['0Ḁ7183', '0Ḁ7122'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
+    [[3, 3, 3], [3, 3, 3], [[3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 2]]]
+    [['WḀR', 'SVR', ['0Ḁ7183', '0Ḁ7122'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
+    [[3, 3, 3], [3, 3, 3], [[3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 3]]]
+    [['WḀR', 'SVR', ['0Ḁ7183', '0Ḁ7122'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
+    [[3, 3, 3], [3, 3, 3], [[2, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 3]]]
     '''
 
     # main loop
 
-    # Check if we have valid codes already
-    # TODO: improve this so it doesn't check every code against every part of the message
     # TODO: make sure this checks for county codes (arrays)
     # length of the broken up message + length of the county codes array
-    for i in range(0, len(headers[0])-1 + len(headers[0][2]-1)):
-        if type(headers[i]) == list:
-            for code in list:
-                # do the bottom loop
+    for i in range(0, len(headers[0][0])-1 + len(headers[0][0][2])-1):
+        # Check if we have valid codes already
+        # TODO: improve this so it doesn't check every code against every part of the message (use dict?)
         valid_code = ''
         for j in valid_code_list:
             for k in j:
@@ -561,12 +577,6 @@ def average_message(headers, transmitter):
             # [[3, 3, 3,], [3, 3, 3], [3, 2, 3]]
             cons = [c[1] for c in msg_con]
             chunk = MessageChunk(msgs, cons)
-            # Look through the messages and compute sums of confidence of bit values
-            # sum_confidence(bitstrue, bitsfalse, msg_con)
-
-            # TODO: fix this so it doesn't work against the 'size' we defined at the top of the function
-            # Then combine that information into a single aggregate message
-            # avgmsg += assemble_char(bitstrue, bitsfalse, confidences, size)
             chunks.append(chunk)
 
     # Figure out the length
