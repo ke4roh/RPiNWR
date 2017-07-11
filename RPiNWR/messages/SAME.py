@@ -425,7 +425,7 @@ class MessageChunk:
     def __init__(self, chars, confidences):
 
         bitstrue, bitsfalse = self.sum_confidence(chars, confidences)
-        self.chars, self.confidences = self.assemble_char(bitstrue, bitsfalse, confidences)
+        self.chars, self.confidences = self.assemble_char(bitstrue, bitsfalse)
 
     # takes headers and computes sums of confidence of bit values
     @staticmethod
@@ -433,44 +433,47 @@ class MessageChunk:
         size = len(confidences)
         bitstrue = [0] * 8 * size
         bitsfalse = [0] * 8 * size
-        for (c) in confidences:
+        for (i) in range(0, len(confidences)):
+            c = confidences[i]
             # convert to int if c is a string
             if type(c) is str:
                 confidence = [int(x) for x in c]
             # otherwise leave it as a list of ints
             else:
                 confidence = c
-            # char_group == chunks of message, e.g. "WXR"
-            for char_group in chars:
-                # Loop through the characters of the message
-                for i in range(0, len(char_group)):
-                    if ord(char_group[i]):  # null characters don't count b/c they indicate no data, not all 0 bits
-                        # Loop through bits and apply confidence for true or false
-                        for j in range(0, 8):
-                            # if the last bit (e.g. 00001) is a 1:
-                            if (ord(char_group[i]) >> j) & 1:
-                                # then add it to the bitstrue (or bitsfalse) bits with that bit's confidence level
-                                bitstrue[(i << 3) + j] += 1 * confidence[i]
-                            else:
-                                bitsfalse[(i << 3) + j] += 1 * confidence[i]
+            '''
+            i == strings
+            j == chars/bytes
+            k == bits
+            '''
+            for j in range(0, len(chars[i])):
+                # & 0xFF is to decode UTF-8
+                if ord(chars[i][j]) & 0xFF:  # null characters don't count b/c they indicate no data, not all 0 bits
+                    # Loop through bits and apply confidence for true or false
+                    for k in range(0, 8):
+                        # if the last bit (e.g. 00001) is a 1:
+                        if (ord(chars[i][j]) >> k) & 1:
+                            # then add it to the bitstrue (or bitsfalse) bits with that bit's confidence level
+                            bitstrue[(j << 3) + k] += 1 * confidence[i]
+                        else:
+                            bitsfalse[(j << 3) + k] += 1 * confidence[i]
         return bitstrue, bitsfalse
 
     # takes a list of true bits, false bits, and confidences, and assembles characters from those lists
     @staticmethod
-    def assemble_char(bitstrue, bitsfalse, confidences):
+    def assemble_char(bitstrue, bitsfalse):
         # the resultant averaged group of chars we get from the bits
         avgchars= []
         # TODO: fix this so it works for complete message, right now it's just doing the first 3 bits over and over
-        for i in range(0, len(confidences)):
+        confidences = []
+        # bitwise shift over 3 to keep int (divide by 8)
+        for i in range(0, len(bitstrue) >> 3):
             # Assemble a character from the various bits
             c = 0
-            confidences[i] = 0
             for j in range(0, 8):
                 bit_weight = (bitstrue[(i << 3) + j] - bitsfalse[(i << 3) + j])
                 c |= (bit_weight > 0) << j
-                confidences[i] += abs(bit_weight)
-            if c == 0:
-                confidences[i] = 0
+                confidences.append(abs(bit_weight))
             avgchars.append(chr(c))
         return avgchars, confidences
 
@@ -589,6 +592,7 @@ def average_message(headers, transmitter):
     avgmsg = [i for i in avgmsg]
     for i in range(0, len(avgmsg)):
         c = avgmsg[i]
+        # pass in the 8 bit-confidences that correspond to the char in avgmsg[i]
         byte_confidence = confidences[i]
         if False and len(__SAME_CHARS) <= byte_pattern_index:
             confidences[i] = 0
