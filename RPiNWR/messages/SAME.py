@@ -460,6 +460,7 @@ class MessageChunk:
         return bitstrue, bitsfalse
 
     # takes a list of true bits, false bits, and confidences, and assembles characters from those lists
+    # TODO: confidences need to be bytes, not bits
     @staticmethod
     def assemble_char(bitstrue, bitsfalse):
         # the resultant averaged group of chars we get from the bits
@@ -475,10 +476,17 @@ class MessageChunk:
                 c |= (bit_weight > 0) << j
                 confidences.append(abs(bit_weight))
             avgchars.append(chr(c))
+            # average bits
+            avg_bits = 0
+            for bit in confidences:
+                avg_bits += bit
+                confidences.remove(bit)
+            avg_bits = round(avg_bits/8)
+            confidences.append(avg_bits)
         return avgchars, confidences
 
 
-# this is for dealing with country code arrays in headers, changes them to individual entries instead of arrayss
+# this is for dealing with country code arrays in headers, changes them to individual entries instead of arrays
 def dearray(array):
     # keep track of where we are in the array so we know where to reinsert members
     index = 0
