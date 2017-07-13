@@ -376,7 +376,8 @@ class MessageChunk:
     # takes headers and computes sums of confidence of bit values
     @staticmethod
     def sum_confidence(chars, confidences):
-        size = len(confidences)
+        # we want to multiply by the length of an item in confidences in case len(item) != len(confidences)
+        size = len(confidences[0])
         bitstrue = [0] * 8 * size
         bitsfalse = [0] * 8 * size
         for (i) in range(0, len(confidences)):
@@ -498,10 +499,8 @@ def average_message(headers, transmitter):
     '''
 
     # main loop
-
-    # TODO: make sure this checks for county codes (arrays)
-    # length of the broken up message + length of the county codes array
-    for i in range(0, len(headers[0][0])-1 + len(headers[0][0][2])-1):
+    # length of the broken up message
+    for i in range(0, len(headers[0][0])-1):
         # Check if we have valid codes already
         # TODO: improve this so it doesn't check every code against every part of the message (use dict?)
         valid_code = ''
