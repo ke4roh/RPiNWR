@@ -299,14 +299,9 @@ def split_message(message, confidences):
     # _truncate will always give us a message with 22 chars after the delimiter, therefore we want the character
     # right before that set of chars (i.e. the delimiter itself)
 
-    # component parts of message
     main_delimiter = message[len(message)-23]
-    originator_code = ''
-    event_code = ''
-    location_codes = []
-    purge_time = ''
-    exact_time = ''
-    callsign = ''
+    final_message = []
+    final_confidences = []
 
     # start splitting!
     main_delimiter_split = message.split(main_delimiter)
@@ -322,20 +317,15 @@ def split_message(message, confidences):
         # then add to our set of return values
 
         # first half:
-        originator_code = (first_half_split[1])
-        event_code = (first_half_split[2])
-        # TODO: change this so it doesn't construct arrays
-        location_codes = []
+        final_message.append((first_half_split[1]))
+        final_message.append((first_half_split[2]))
         for i in range(3, len(first_half_split)):
-            location_codes.append(first_half_split[i])
+            final_message.append(first_half_split[i])
 
         # second half:
-        purge_time = (second_half_split[0])
-        exact_time = (second_half_split[1])
-        callsign = (second_half_split[2])
-
-    final_message = [originator_code, event_code, location_codes, purge_time, exact_time, callsign]
-    final_confidences = []
+        final_message.append((second_half_split[0]))
+        final_message.append((second_half_split[1]))
+        final_message.append((second_half_split[2]))
 
     # align confidences with message parts
     count = 0
@@ -363,50 +353,6 @@ def split_message(message, confidences):
         con_set = []
 
     return [final_message, final_confidences]
-
-'''
-# takes headers and computes sums of confidence of bit values
-def sum_confidence(bitstrue, bitsfalse, headers):
-    for (msg, c) in headers:
-        # convert to int if c is a string
-        if type(c) is str:
-            confidence = [int(x) for x in c]
-        # otherwise leave it as a list of ints
-        else:
-            confidence = c
-        # Loop through the characters of the message
-        for i in range(0, len(msg)):
-            if ord(msg[i]):  # null characters don't count b/c they indicate no data, not all 0 bits
-                # Loop through bits and apply confidence for true or false
-                for j in range(0, 8):
-                    # if the last bit (e.g. 00001) is a 1:
-                    if (ord(msg[i]) >> j) & 1:
-                        # then add it to the bitstrue (or bitsfalse) bits with that bit's confidence level
-                        bitstrue[(i << 3) + j] += 1 * confidence[i]
-                    else:
-                        bitsfalse[(i << 3) + j] += 1 * confidence[i]
-    return None
-'''
-
-'''
-# takes a list of true bits, false bits, and confidences, and assembles characters from those lists
-def assemble_char(bitstrue, bitsfalse, confidences, size):
-    # the resultant averaged string we get from the bits
-    avgstr= []
-    # TODO: fix this so it works for complete message, right now it's just doing the first 3 bits over and over
-    for i in range(0, size):
-        # Assemble a character from the various bits
-        c = 0
-        confidences[i] = 0
-        for j in range(0, 8):
-            bit_weight = (bitstrue[(i << 3) + j] - bitsfalse[(i << 3) + j])
-            c |= (bit_weight > 0) << j
-            confidences[i] += abs(bit_weight)
-        if c == 0:
-            confidences[i] = 0
-        avgstr.append(chr(c))
-    return avgstr
-'''
 
 
 class MessageChunk:
@@ -465,7 +411,6 @@ class MessageChunk:
         # the resultant averaged group of chars we get from the bits
         avgchars= []
         confidences = []
-        averaged_confidences = []
         # bitwise shift over 3 to keep int (divide by 8)
         for i in range(0, len(bitstrue) >> 3):
             # Assemble a character from the various bits
@@ -473,12 +418,9 @@ class MessageChunk:
             for j in range(0, 8):
                 bit_weight = (bitstrue[(i << 3) + j] - bitsfalse[(i << 3) + j])
                 c |= (bit_weight > 0) << j
-               confidences.append(abs(bit_weight))
+                confidences.append(abs(bit_weight))
             avgchars.append(chr(c))
-            # average bits
-            averaged_confidences.append(round(sum(confidences)/8))
-            confidences = []
-        return avgchars, averaged_confidences
+        return avgchars, confidences
 
 
 # this is for dealing with country code arrays in headers, changes them to individual entries instead of arrays
@@ -532,7 +474,7 @@ def average_message(headers, transmitter):
     valid_code_list = [_DURATION_NUMBERS, _EVENT_CODES, _ORIGINATOR_CODES]
 
     # TODO: change this so it checks each part of the message separately
-
+    # TODO: fix this so location codes are no longer an array
     # First, break up the message into its component parts
     for i in headers:
         msg = i[0]
