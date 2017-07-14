@@ -551,28 +551,25 @@ def average_message(headers, transmitter):
                 that correspond to the char in avgmsg[i]
                 '''
                 byte_confidence = chunk.confidences[i:i+1*8]
-                if False and len(__SAME_CHARS) <= byte_pattern_index:
-                    chunk.confidences[i] = 0
+                pattern = __SAME_CHARS[byte_pattern_index]
+                multipath = None  # Where the pattern can repeat, multipath supports both routes
+                if type(pattern) is int:
+                    multipath = pattern
+                    pattern = __SAME_CHARS[byte_pattern_index + multipath] + __SAME_CHARS[
+                        byte_pattern_index + 1]
+                if c not in pattern:
+                    # That was ugly.  Now find the closest legitimate character
+                    byte_confidence, c = _reconcile_character(bitstrue[i * 8:(i + 1) * 8],
+                        bitsfalse[i * 8:(i + 1) * 8], pattern)
+                    byte_confidence <<= 3  # It will get shifted back in a moment
+                if not multipath:
+                    byte_pattern_index += 1
                 else:
-                    pattern = __SAME_CHARS[byte_pattern_index]
-                    multipath = None  # Where the pattern can repeat, multipath supports both routes
-                    if type(pattern) is int:
-                        multipath = pattern
-                        pattern = __SAME_CHARS[byte_pattern_index + multipath] + __SAME_CHARS[
-                            byte_pattern_index + 1]
-                    if c not in pattern:
-                        # That was ugly.  Now find the closest legitimate character
-                        byte_confidence, c = _reconcile_character(bitstrue[i * 8:(i + 1) * 8],
-                            bitsfalse[i * 8:(i + 1) * 8], pattern)
-                        byte_confidence <<= 3  # It will get shifted back in a moment
-                    if not multipath:
-                        byte_pattern_index += 1
+                    if c in __SAME_CHARS[byte_pattern_index + 1]:
+                        byte_pattern_index += 2
                     else:
-                        if c in __SAME_CHARS[byte_pattern_index + 1]:
-                            byte_pattern_index += 2
-                        else:
-                            byte_pattern_index += multipath + 1
-                    chunk.chars[i] = c
+                        byte_pattern_index += multipath + 1
+                chunk.chars[i] = c
                 chunk.confidences[i] = min(9, byte_confidence >> 3)
             # TODO: combine chunks into message after this?
             # chunk.chars = "".join(chunk.chars)
