@@ -550,7 +550,7 @@ def average_message(headers, transmitter):
                 pass in the groups of 8 bit-confidences (slicing up the confidence list by 8s does this)
                 that correspond to the char in avgmsg[i]
                 '''
-                byte_confidence = chunk.confidences[i:i+1*8]
+                byte_confidence = chunk.confidences[i]
                 pattern = __SAME_CHARS[byte_pattern_index]
                 multipath = None  # Where the pattern can repeat, multipath supports both routes
                 if type(pattern) is int:
