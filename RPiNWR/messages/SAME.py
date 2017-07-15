@@ -416,12 +416,12 @@ class MessageChunk:
                             bitsfalse[(j << 3) + k] += 1 * confidence[i]
         return bitstrue, bitsfalse
 
-    # takes a list of true bits, false bits, and confidences, and assembles characters from those lists
+    # takes a list of true bits and false bits and assembles characters from those lists
     @staticmethod
     def assemble_char(bitstrue, bitsfalse):
         # the resultant averaged group of chars we get from the bits
         avgchars= []
-        confidences = []
+        confidences = [0] * (len(bitstrue) >> 3)
         # bitwise shift over 3 to keep int (divide by 8)
         for i in range(0, len(bitstrue) >> 3):
             # Assemble a character from the various bits
@@ -429,7 +429,8 @@ class MessageChunk:
             for j in range(0, 8):
                 bit_weight = (bitstrue[(i << 3) + j] - bitsfalse[(i << 3) + j])
                 c |= (bit_weight > 0) << j
-                confidences.append(abs(bit_weight))
+                # confidences.append(abs(bit_weight))
+                confidences[i] += abs(bit_weight)
             avgchars.append(chr(c))
         return avgchars, confidences
 
