@@ -567,6 +567,21 @@ class TestSAME(unittest.TestCase):
         self.assertEqual(dearray(input_array_chars), expected_array_chars)
         self.assertEqual(dearray(input_array_confs), expected_array_confs)
 
+    def test_approximate_chars(self):
+        # init
+        bitstrue = [9, 9, 9, 0, 9, 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 9, 0, 9, 0]
+        bitsfalse = [0, 0, 0, 9, 0, 9, 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 9, 9, 0, 9, 0, 9]
+        chars = ['W', '\x00', 'R']
+        confidences = [72, 0, 72]
+        expected_chars = ['W', 'X', 'R']
+        expected_confidences = [9, 9, 9]
+
+        # act
+        test_chars, test_confidences = SAME.MessageChunk.approximate_chars(chars, confidences, bitstrue, bitsfalse)
+
+        # assert
+        self.assertEqual(test_chars, test_confidences)
+
     def test__truncate(self):
 
         # NOTES:

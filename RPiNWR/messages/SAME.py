@@ -381,7 +381,7 @@ class MessageChunk:
     def __init__(self, chars, confidences):
 
         bitstrue, bitsfalse = self.sum_confidence(chars, confidences)
-        self.chars, self.confidences = self.assemble_char(bitstrue, bitsfalse)
+        self.chars, self.confidences = self.assemble_chars(bitstrue, bitsfalse)
 
     # takes headers and computes sums of confidence of bit values
     @staticmethod
@@ -418,7 +418,7 @@ class MessageChunk:
 
     # takes a list of true bits and false bits and assembles characters from those lists
     @staticmethod
-    def assemble_char(bitstrue, bitsfalse):
+    def assemble_chars(bitstrue, bitsfalse):
         # the resultant averaged group of chars we get from the bits
         avgchars= []
         confidences = [0] * (len(bitstrue) >> 3)
@@ -433,6 +433,55 @@ class MessageChunk:
                 confidences[i] += abs(bit_weight)
             avgchars.append(chr(c))
         return avgchars, confidences
+
+    # Check the character against the space of possible characters and approximate the closest valid char
+    @staticmethod
+    def approximate_chars(chars, confidences, bitstrue, bitsfalse):
+
+        # TODO: find a way around duplicating this
+        # -WXR-TOR-039173-039051-139069+0030-1591829-KCLE/NWS
+        __ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+        __NUMERIC = '0123456789'
+        __PRINTABLE = '\x10\x13' + "".join(filter(lambda x: ord(x) != 43 and ord(x) != 45, [chr(x) for x in range(33, 127)]))
+        __SAME_CHARS = [
+            'ECWP', 'AIXE', 'SVRP', __ALPHA, __ALPHA, __ALPHA,
+            __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, -7,
+            __NUMERIC, __NUMERIC, '0134', '05',
+            '0123', __NUMERIC, __NUMERIC, '012', __NUMERIC, '012345', __NUMERIC,
+            __ALPHA, __ALPHA, __ALPHA, __ALPHA, '/', 'N', 'W', 'S'
+        ]
+
+        chars_to_return = []
+        confidences_to_return = []
+        for i in range(0, len(chars)):
+            byte_pattern_index = 0
+            c = chars[i]
+            # pass in the groups of confidences that correspond to the char in chars[i]
+            byte_confidence = confidences[i]
+            # same = _SAME__SAME_CHARS
+            pattern = __SAME_CHARS[byte_pattern_index]
+            # Where the pattern can repeat (e.g. county codes), multipath supports both routes
+            multipath = None
+            if type(pattern) is int:
+                multipath = pattern
+                pattern = __SAME_CHARS[byte_pattern_index + multipath] + __SAME_CHARS[
+                    byte_pattern_index + 1]
+            if c not in pattern:
+                # That was ugly.  Now find the closest legitimate character
+                byte_confidence, c = _reconcile_character(bitstrue[i * 8:(i + 1) * 8],
+                                                          bitsfalse[i * 8:(i + 1) * 8], pattern)
+                # It will get shifted back in a moment
+                byte_confidence <<= 3
+            if not multipath:
+                byte_pattern_index += 1
+            else:
+                if c in __SAME_CHARS[byte_pattern_index + 1]:
+                    byte_pattern_index += 2
+                else:
+                    byte_pattern_index += multipath + 1
+            chars_to_return.append(c)
+            confidences_to_return.append(min(9, byte_confidence >> 3))
+        return chars_to_return, confidences_to_return
 
 
 # this is for dealing with country code arrays in headers, changes them to individual entries instead of arrays
@@ -543,38 +592,37 @@ def average_message(headers, transmitter):
             # convert to list so we can make in-line changes by index
             # avgmsg = [i for i in avgmsg]
 
-            # Check the character against the space of possible characters
-            for i in range(0, len(chunk.chars)):
-                c = chunk.chars[i]
-                '''
-                pass in the groups of 8 bit-confidences (slicing up the confidence list by 8s does this)
-                that correspond to the char in avgmsg[i]
-                '''
-                byte_confidence = chunk.confidences[i]
-                pattern = __SAME_CHARS[byte_pattern_index]
-                multipath = None  # Where the pattern can repeat, multipath supports both routes
-                if type(pattern) is int:
-                    multipath = pattern
-                    pattern = __SAME_CHARS[byte_pattern_index + multipath] + __SAME_CHARS[
-                        byte_pattern_index + 1]
-                if c not in pattern:
-                    # That was ugly.  Now find the closest legitimate character
-                    byte_confidence, c = _reconcile_character(bitstrue[i * 8:(i + 1) * 8],
-                        bitsfalse[i * 8:(i + 1) * 8], pattern)
-                    byte_confidence <<= 3  # It will get shifted back in a moment
-                if not multipath:
-                    byte_pattern_index += 1
-                else:
-                    if c in __SAME_CHARS[byte_pattern_index + 1]:
-                        byte_pattern_index += 2
-                    else:
-                        byte_pattern_index += multipath + 1
-                chunk.chars[i] = c
-                chunk.confidences[i] = min(9, byte_confidence >> 3)
-            # TODO: combine chunks into message after this?
-            # chunk.chars = "".join(chunk.chars)
+        '''
+        for i in range(0, len(chunk.chars)):
+            c = chunk.chars[i]
 
-    # Now break the message into its parts and clean up each one
+            pass in the groups of 8 bit-confidences (slicing up the confidence list by 8s does this)
+            that correspond to the char in avgmsg[i]
+
+            byte_confidence = chunk.confidences[i]
+            pattern = __SAME_CHARS[byte_pattern_index]
+            multipath = None  # Where the pattern can repeat, multipath supports both routes
+            if type(pattern) is int:
+                multipath = pattern
+                pattern = __SAME_CHARS[byte_pattern_index + multipath] + __SAME_CHARS[
+                    byte_pattern_index + 1]
+            if c not in pattern:
+                # That was ugly.  Now find the closest legitimate character
+                byte_confidence, c = _reconcile_character(bitstrue[i * 8:(i + 1) * 8],
+                                                          bitsfalse[i * 8:(i + 1) * 8], pattern)
+                byte_confidence <<= 3  # It will get shifted back in a moment
+            if not multipath:
+                byte_pattern_index += 1
+            else:
+                if c in __SAME_CHARS[byte_pattern_index + 1]:
+                    byte_pattern_index += 2
+                else:
+                    byte_pattern_index += multipath + 1
+            chunk.chars[i] = c
+            chunk.confidences[i] = min(9, byte_confidence >> 3)
+        '''
+
+# Now break the message into its parts and clean up each one
     avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, 1, _ORIGINATOR_CODES)
     avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, 5, _EVENT_CODES)
 
