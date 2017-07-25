@@ -583,7 +583,8 @@ class TestSAME(unittest.TestCase):
         test_chars, test_confidences = SAME.MessageChunk.approximate_chars(chars, confidences, bitstrue, bitsfalse)
 
         # assert
-        self.assertEqual(test_chars, test_confidences)
+        self.assertEqual(expected_chars, test_chars)
+        self.assertEqual(expected_confidences, test_confidences)
 
     def test__truncate(self):
 
