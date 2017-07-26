@@ -571,17 +571,19 @@ class TestSAME(unittest.TestCase):
         # init
         bitstrue = [9, 9, 9, 0, 9, 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 9, 0, 9, 0]
         bitsfalse = [0, 0, 0, 9, 0, 9, 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 9, 9, 0, 9, 0, 9]
-        chars = ['W', '\x00', 'R']
-        confidences = [72, 0, 72]
-        expected_chars = ['W', 'X', 'R']
-        expected_confidences = [9, 9, 9]
+        byte_confidence_index = 0
+        chars = [['W', '\x00', 'R'], ['S', 'V', 'R']]
+        confidences = [[72, 0, 72], [72, 72, 72]]
+        expected_chars = [['W', '\x00', 'R'], ['S', 'V', 'R']]
+        expected_confidences = [[9, 0, 9], [9, 9, 9]]
 
         # act
-        test_chars, test_confidences = SAME.MessageChunk.approximate_chars(chars, confidences, bitstrue, bitsfalse)
-
-        # assert
-        self.assertEqual(expected_chars, test_chars)
-        self.assertEqual(expected_confidences, test_confidences)
+        for i, j in chars, confidences:
+            test_chars, test_confidences, byte_confidence_index = \
+                SAME.MessageChunk.approximate_chars(i, j, bitstrue, bitsfalse, byte_confidence_index)
+            # assert
+            self.assertEqual(expected_chars, test_chars)
+            self.assertEqual(expected_confidences, test_confidences)
 
     def test__truncate(self):
 
