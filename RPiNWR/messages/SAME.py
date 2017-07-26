@@ -373,16 +373,19 @@ class MessageChunk:
     when you subtract (say) WXR-WAR, you get the answer + the new (changed) confidence
     3. subtraction should return a new instance of the object
     4. pick the best choice (least distance from the received data) (highest sum of confidences = least distance)
-    :chars: group of three chunks of chars, e.g. ['WXR', 'WXX', 'WXZ']
-    :confidences: group of three groups of confidences which apply to chars, e.g. [[3, 3, 3]. [3, 2, 3,], [1, 2, 3]]
+    :param chars: group of three chunks of chars, e.g. ['WXR', 'WXX', 'WXZ']
+    :param confidences: group of three groups of confidences which apply to chars, e.g. [[3, 3, 3]. [3, 2, 3,], [1, 2, 3]]
+    :param byte_confidence_index: tracks what group of chars in _SAME_CHARS against which we are comparing bytes
     :return: ['wxr-sad-021392-9023091-093-KWX/THRE', '33333333333333333333']
     """
 
-    def __init__(self, chars, confidences):
+    def __init__(self, chars, confidences, byte_confidence_index):
 
+        self.byte_confidence_index = 0
         bitstrue, bitsfalse = self.sum_confidence(chars, confidences)
         self.chars, self.confidences = self.assemble_chars(bitstrue, bitsfalse)
-        self.chars, self.confidences = self.approximate_chars(self.chars, self.confidences, bitstrue, bitsfalse)
+        self.chars, self.confidences, self.byte_confidence_index = self.approximate_chars(self.chars, self.confidences,
+                                                                   bitstrue, bitsfalse, self.byte_confidence_index)
 
     # takes headers and computes sums of confidence of bit values
     @staticmethod
@@ -437,27 +440,10 @@ class MessageChunk:
 
     # Check the character against the space of possible characters and approximate the closest valid char
     @staticmethod
-    def approximate_chars(chars, confidences, bitstrue, bitsfalse):
-
-        '''
-        # TODO: find a way around duplicating this
-        # -WXR-TOR-039173-039051-139069+0030-1591829-KCLE/NWS
-        __ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-        __NUMERIC = '0123456789'
-        __PRINTABLE = '\x10\x13' + "".join(filter(lambda x: ord(x) != 43 and ord(x) != 45, [chr(x) for x in range(33, 127)]))
-        __SAME_CHARS = [
-            'ECWP', 'AIXE', 'SVRP', __ALPHA, __ALPHA, __ALPHA,
-            __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, -7,
-            __NUMERIC, __NUMERIC, '0134', '05',
-            '0123', __NUMERIC, __NUMERIC, '012', __NUMERIC, '012345', __NUMERIC,
-            __ALPHA, __ALPHA, __ALPHA, __ALPHA, '/', 'N', 'W', 'S'
-        ]
-        '''
-
+    def approximate_chars(chars, confidences, bitstrue, bitsfalse, byte_pattern_index):
         chars_to_return = []
         confidences_to_return = []
         for i in range(0, len(chars)):
-            byte_pattern_index = 0
             c = chars[i]
             # pass in the groups of confidences that correspond to the char in chars[i]
             byte_confidence = confidences[i]
@@ -484,7 +470,7 @@ class MessageChunk:
                     byte_pattern_index += multipath + 1
             chars_to_return.append(c)
             confidences_to_return.append(min(9, byte_confidence >> 3))
-        return chars_to_return, confidences_to_return
+        return chars_to_return, confidences_to_return, byte_pattern_index
 
 
 # this is for dealing with country code arrays in headers, changes them to individual entries instead of arrays
@@ -532,8 +518,8 @@ def average_message(headers, transmitter):
     # bitstrue = [0] * 8 * size
     # bitsfalse = [0] * 8 * size
     confidences = []
-    # byte_pattern_index = 0
-    avgmsg = ''
+    byte_pattern_index = 0
+    avgmsg = '-'
     chunks = []
     valid_code_list = [_DURATION_NUMBERS, _EVENT_CODES, _ORIGINATOR_CODES]
 
@@ -586,7 +572,9 @@ def average_message(headers, transmitter):
             msgs = [c[0] for c in msg_con]
             # [[3, 3, 3,], [3, 3, 3], [3, 2, 3]]
             cons = [c[1] for c in msg_con]
-            chunk = MessageChunk(msgs, cons)
+            chunk = MessageChunk(msgs, cons, byte_pattern_index)
+            # keep track of what chars we are comparing against
+            byte_pattern_index += chunk.byte_confidence_index
             chunks.append(chunk)
 
     # add message and cons to full message and confidence array
@@ -594,6 +582,7 @@ def average_message(headers, transmitter):
         for char, con in list(zip(chunk.chars, chunk.confidences)):
             avgmsg += char
             confidences.append(con)
+        avgmsg += '-'
 
 # Now break the message into its parts and clean up each one
     avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, 1, _ORIGINATOR_CODES)
