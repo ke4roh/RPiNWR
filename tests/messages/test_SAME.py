@@ -575,18 +575,26 @@ class TestSAME(unittest.TestCase):
         bitstrue = [9, 9, 9, 0, 9, 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 9, 0, 9, 0]
         bitsfalse = [0, 0, 0, 9, 0, 9, 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 9, 9, 0, 9, 0, 9]
         byte_confidence_index = 0
-        chars = [['W', '\x00', 'R'], ['S', 'V', 'R']]
-        confidences = [[72, 0, 72], [72, 72, 72]]
-        expected_chars = [['W', '\x00', 'R'], ['S', 'V', 'R']]
-        expected_confidences = [[9, 0, 9], [9, 9, 9]]
+        chars1 = ['W', '\x00', 'R']
+        chars2 = ['S', 'V', 'R']
+        confidences1 = [72, 0, 72]
+        confidences2 = [72, 72, 72]
+        expected_chars1 = ['W', '\x00', 'R']
+        expected_chars2 = ['S', 'V', 'R']
+        expected_confidences1 = [9, 0, 9]
+        expected_confidences2 = [9, 9, 9]
 
         # act
-        for i, j in chars, confidences:
-            test_chars, test_confidences, byte_confidence_index = \
-                SAME.MessageChunk.approximate_chars(i, j, bitstrue, bitsfalse, byte_confidence_index)
-            # assert
-            self.assertEqual(expected_chars, test_chars)
-            self.assertEqual(expected_confidences, test_confidences)
+        test_chars1, test_confidences1, byte_confidence_index = \
+            SAME.MessageChunk.approximate_chars(chars1, confidences1, bitstrue, bitsfalse, byte_confidence_index)
+        test_chars2, test_confidences2, byte_confidence_index = \
+            SAME.MessageChunk.approximate_chars(chars2, confidences2, bitstrue, bitsfalse, byte_confidence_index)
+
+        # assert
+        self.assertEqual(expected_chars1, test_chars1)
+        self.assertEqual(expected_confidences1, test_confidences1)
+        self.assertEqual(expected_chars2, test_chars2)
+        self.assertEqual(expected_confidences2, test_confidences2)
 
     def test__truncate(self):
 
