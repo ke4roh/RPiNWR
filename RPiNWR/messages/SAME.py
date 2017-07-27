@@ -142,7 +142,8 @@ def _reconcile_character(bitstrue, bitsfalse, pattern):
         confidence = 1
     return confidence, near[0][1]
 
-# -WXR-TOR-039173-039051-139069+0030-1591829-KCLE/NWS
+# CLEAN: -WXR-TOR-039173-039051-139069+0030-1591829-KCLE/NWS
+# DIRTY: -WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀḖḀỻờ~ỿ
 __ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 __NUMERIC = '0123456789'
 __PRINTABLE = '\x10\x13' + "".join(filter(lambda x: ord(x) != 43 and ord(x) != 45, [chr(x) for x in range(33, 127)]))
@@ -293,8 +294,6 @@ def _truncate(avgmsg, confidences):
 # clean message: -WXR-TOR-039173-039051-139069+0030-1591829-KCLE/NWS
 # dirty message: -WXR-RWT-020103-020209-020091-°20121-029047-029165%029095-029037;0030-3031710,KEAX\\'ÎWS-
 
-
-# TODO: make this return confidences as well as characters
 def split_message(message, confidences):
 
     # first, truncate the message and separate message and confidences
@@ -374,20 +373,19 @@ class MessageChunk:
     3. subtraction should return a new instance of the object
     4. pick the best choice (least distance from the received data) (highest sum of confidences = least distance)
     :param chars: group of three chunks of chars, e.g. ['WXR', 'WXX', 'WXZ']
-    :param confidences: group of three groups of confidences which apply to chars, e.g. [[3, 3, 3]. [3, 2, 3,], [1, 2, 3]]
+    :param confidences: group of three groups of confidences which apply to chars,
+    e.g. [[3, 3, 3]. [3, 2, 3,],[1, 2, 3]]
     :param byte_confidence_index: tracks what group of chars in _SAME_CHARS against which we are comparing bytes
-    :return: ['wxr-sad-021392-9023091-093-KWX/THRE', '33333333333333333333']
     """
 
     def __init__(self, chars, confidences, byte_confidence_index):
-
-        self.byte_confidence_index = 0
+        self.byte_confidence_index = byte_confidence_index
         bitstrue, bitsfalse = self.sum_confidence(chars, confidences)
         self.chars, self.confidences = self.assemble_chars(bitstrue, bitsfalse)
         self.chars, self.confidences, self.byte_confidence_index = self.approximate_chars(self.chars, self.confidences,
                                                                    bitstrue, bitsfalse, self.byte_confidence_index)
 
-    # takes headers and computes sums of confidence of bit values
+    # takes chars and computes sums of confidence of bit values
     @staticmethod
     def sum_confidence(chars, confidences):
         # we want to multiply by the length of an item in confidences in case len(item) != len(confidences)
@@ -439,6 +437,19 @@ class MessageChunk:
         return avgchars, confidences
 
     # Check the character against the space of possible characters and approximate the closest valid char
+
+    '''
+    [
+    'ECWP', 'AIXE', 'SVRP', __ALPHA, __ALPHA, __ALPHA,
+    __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, -7,
+    __NUMERIC, __NUMERIC, '0134', '05',
+    '0123', __NUMERIC, __NUMERIC, '012', __NUMERIC, '012345', __NUMERIC,
+    __ALPHA, __ALPHA, __ALPHA, __ALPHA, '/', 'N', 'W', 'S'
+    ]
+    
+    '-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀḖḀỻờ~ỿ'
+    '''
+
     @staticmethod
     def approximate_chars(chars, confidences, bitstrue, bitsfalse, byte_pattern_index):
         chars_to_return = []
@@ -574,7 +585,7 @@ def average_message(headers, transmitter):
             cons = [c[1] for c in msg_con]
             chunk = MessageChunk(msgs, cons, byte_pattern_index)
             # keep track of what chars we are comparing against
-            byte_pattern_index += chunk.byte_confidence_index
+            byte_pattern_index = chunk.byte_confidence_index
             chunks.append(chunk)
 
     # add message and cons to full message and confidence array
@@ -584,7 +595,7 @@ def average_message(headers, transmitter):
             confidences.append(con)
         avgmsg += '-'
 
-# Now break the message into its parts and clean up each one
+    # Now break the message into its parts and clean up each one
     avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, 1, _ORIGINATOR_CODES)
     avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, 5, _EVENT_CODES)
 
@@ -636,6 +647,8 @@ def average_message(headers, transmitter):
     for weight, offset in ((.5, -4), (.7, -3), (.9, -2), (1.1, -1), (1, 0)):
         valid_times.append((weight, time.strftime('%j%H%M', time.gmtime(headers[0][2] + 60 * offset))))
     avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, ix, valid_times)
+
+    # TODO: we need to incorporate '-' & '+' with confidences correctly
 
     # Reconcile the end
     ix += 8
