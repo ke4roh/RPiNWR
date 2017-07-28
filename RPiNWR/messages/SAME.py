@@ -147,6 +147,7 @@ def _reconcile_character(bitstrue, bitsfalse, pattern):
 __ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 __NUMERIC = '0123456789'
 __PRINTABLE = '\x10\x13' + "".join(filter(lambda x: ord(x) != 43 and ord(x) != 45, [chr(x) for x in range(33, 127)]))
+'''
 _SAME_CHARS = [
     'ECWP', 'AIXE', 'SVRP', __ALPHA, __ALPHA, __ALPHA,
     __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, -7,
@@ -154,16 +155,16 @@ _SAME_CHARS = [
     '0123', __NUMERIC, __NUMERIC, '012', __NUMERIC, '012345', __NUMERIC,
     __ALPHA, __ALPHA, __ALPHA, __ALPHA, '/', 'N', 'W', 'S'
 ]
-
 '''
-    [
+
+_SAME_CHARS = [
     '-', 'ECWP', 'AIXE', 'SVRP', '-', __ALPHA, __ALPHA, __ALPHA, '-',
     __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, -7,
     '+', __NUMERIC, __NUMERIC, '0134', '05', '-',
     '0123', __NUMERIC, __NUMERIC, '012', __NUMERIC, '012345', __NUMERIC, '-',
     __ALPHA, __ALPHA, __ALPHA, __ALPHA, '/', 'N', 'W', 'S', '-'
 ]
-'''
+
 
 
 def _word_distance(word, confidence, choice, wildcard=None):
@@ -528,7 +529,7 @@ def average_message(headers, transmitter):
     # bitsfalse = [0] * 8 * size
     confidences = []
     byte_pattern_index = 0
-    avgmsg = '-'
+    avgmsg = []
     chunks = []
     valid_code_list = [_DURATION_NUMBERS, _EVENT_CODES, _ORIGINATOR_CODES]
 
@@ -591,7 +592,6 @@ def average_message(headers, transmitter):
         for char, con in list(zip(chunk.chars, chunk.confidences)):
             avgmsg += char
             confidences.append(con)
-        avgmsg += '-'
 
     # Now break the message into its parts and clean up each one
     avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, 1, _ORIGINATOR_CODES)
