@@ -364,7 +364,11 @@ class MessageChunk:
     :param chars: group of three chunks of chars, e.g. ['WXR', 'WXX', 'WXZ']
     :param confidences: group of three groups of confidences which apply to chars,
     e.g. [[3, 3, 3]. [3, 2, 3,],[1, 2, 3]]
-    :param byte_confidence_index: tracks what group of chars in _SAME_CHARS against which we are comparing bytes
+    :param byte_confidence_index: this is used in approximate chars to track which group of valid chars
+    (these are stored in _SAME_CHARS) to try to approximate against.  _SAME_CHARS is an array of strings of valid chars,
+    this value indexes that array as we approximate.  For example:
+     char to approximate: Ḁ
+     group to approximate against: 'AIXE'
     """
 
     def __init__(self, chars, confidences, byte_confidence_index):
@@ -595,6 +599,8 @@ def average_message(headers, transmitter):
     except KeyError:
         wfo = []
 
+    # TODO: this needs to be put in MessageChunk constructor before approximate_chars()
+    # We need the confidences in test_dirty_messages() to be a 9 if no changes made to char
     def check_fips(avgmsg, confidences, ixlist):
         recheck = []
         matched1 = False
