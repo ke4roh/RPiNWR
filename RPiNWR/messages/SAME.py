@@ -147,16 +147,6 @@ def _reconcile_character(bitstrue, bitsfalse, pattern):
 __ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 __NUMERIC = '0123456789'
 __PRINTABLE = '\x10\x13' + "".join(filter(lambda x: ord(x) != 43 and ord(x) != 45, [chr(x) for x in range(33, 127)]))
-'''
-_SAME_CHARS = [
-    'ECWP', 'AIXE', 'SVRP', __ALPHA, __ALPHA, __ALPHA,
-    __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, -7,
-    __NUMERIC, __NUMERIC, '0134', '05',
-    '0123', __NUMERIC, __NUMERIC, '012', __NUMERIC, '012345', __NUMERIC,
-    __ALPHA, __ALPHA, __ALPHA, __ALPHA, '/', 'N', 'W', 'S'
-]
-'''
-
 _SAME_CHARS = [
     '-', 'ECWP', 'AIXE', 'SVRP', '-', __ALPHA, __ALPHA, __ALPHA, '-',
     __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, -7,
@@ -523,10 +513,6 @@ def average_message(headers, transmitter):
     from ..sources.radio.nwr_data import get_counties, get_wfo
 
     # init
-    # TODO: move these within the main for loop
-    size = max([len(x[0]) for x in headers])
-    # bitstrue = [0] * 8 * size
-    # bitsfalse = [0] * 8 * size
     confidences = []
     byte_pattern_index = 0
     avgmsg = []
@@ -559,7 +545,7 @@ def average_message(headers, transmitter):
 
     # main loop
     # length of the broken up message
-    for i in range(0, len(headers[0][0])-1):
+    for i in range(0, len(headers[0][0])):
         # Check if we have valid codes already
         # TODO: improve this so it doesn't check every code against every part of the message (use dict?)
         valid_code = ''
@@ -567,7 +553,8 @@ def average_message(headers, transmitter):
             for k in j:
                 # check against each valid code list
                 # [WXR, WAR, WRR]
-                valid_code = check_if_valid_code([code[0][i] for code in headers], k)
+                # we need to slice off the delimiters before we check for valid codes
+                valid_code = check_if_valid_code([code[0][i][1:] for code in headers], k)
         # if it's valid, add it to our final message
         if valid_code:
             avgmsg += valid_code
