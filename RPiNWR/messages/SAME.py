@@ -322,19 +322,17 @@ def split_message(message, confidences):
         second_half_split = main_delimiter_split[1].split('-')
         # 0030-3031710,KEAX\\'ÎWS-
 
-        # check to make sure we're getting the formats we expect for individual chunks of the message
-        # then add to our set of return values
-
+        # add to our set of return values and replace delimiters
         # first half:
-        final_message.append((first_half_split[1]))
-        final_message.append((first_half_split[2]))
+        final_message.append('-' + (first_half_split[1]))
+        final_message.append('-' + (first_half_split[2]))
         for i in range(3, len(first_half_split)):
-            final_message.append(first_half_split[i])
+            final_message.append('-' + first_half_split[i])
 
         # second half:
-        final_message.append((second_half_split[0]))
-        final_message.append((second_half_split[1]))
-        final_message.append((second_half_split[2]))
+        final_message.append('+' + (second_half_split[0]))
+        final_message.append('-' + (second_half_split[1]))
+        final_message.append('-' + (second_half_split[2] + '-'))
 
     # align confidences with message parts
     count = 0
