@@ -227,6 +227,7 @@ def _reconcile_word(msg, confidences, start, choices):
         msg = "".join(l)
         matched = True
     return msg, confidences, matched
+    return msg, confidences, matched
 
 
 _END_SEQUENCE = "+0___-_______-____/NWS-"
@@ -371,12 +372,56 @@ class MessageChunk:
      group to approximate against: 'AIXE'
     """
 
+    # get FIPS and transmitter codes (which, in some non-weather types of messages, may not be FIPS)
+    try:
+        candidate_fips = list(SAMEMessage.get_counties(transmitter))
+    except KeyError:
+        candidate_fips = []
+
+    try:
+        wfo = [get_wfo(transmitter)]
+    except KeyError:
+        wfo = []
+
     def __init__(self, chars, confidences, byte_confidence_index):
         self.byte_confidence_index = byte_confidence_index
         bitstrue, bitsfalse = self.sum_confidence(chars, confidences)
         self.chars, self.confidences = self.assemble_chars(bitstrue, bitsfalse)
+
+        # TODO: this should only try a set of codes if it matches the byte_confidence_index
+        # Clean up chunks of chars before we attempt to approximate individual chars
+        self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, _ORIGINATOR_CODES)
+        self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 5, _EVENT_CODES)
+        # Check off counties until the maximum number have been reconciled
+        matched = True
+        recheck = range(9, len(avgmsg) - 23, 7)
+        while matched and len(recheck) > 0:
+            self.chars, self.confidences, matched, recheck = check_fips(self.chars, self.confidences, recheck)
+        # TODO add a modest bias for adjacent counties to resolve ties in bytes
+
+        # Reconcile purge time
+        ix = len(avgmsg) - 23
+        self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, ix, ['+'])
+        ix += 1
+        self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, ix, VALID_DURATIONS)
+
+        # Reconcile issue time
+        ix += 5
+        valid_times = []
+        for weight, offset in ((.5, -4), (.7, -3), (.9, -2), (1.1, -1), (1, 0)):
+            valid_times.append((weight, time.strftime('%j%H%M', time.gmtime(headers[0][2] + 60 * offset))))
+        self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, ix, valid_times)
+
+        # Reconcile the end
+        ix += 8
+        self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, ix, wfo)
+
+        ix += 5
+        self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, ix, ['NWS'])
+
+        # After cleaning up by word, we clean up by char
         self.chars, self.confidences, self.byte_confidence_index = self.approximate_chars(self.chars, self.confidences,
-                                                                   bitstrue, bitsfalse, self.byte_confidence_index)
+                                                                       bitstrue, bitsfalse, self.byte_confidence_index)
 
     # takes chars and computes sums of confidence of bit values
     @staticmethod
@@ -433,15 +478,34 @@ class MessageChunk:
 
     '''
     [
-    'ECWP', 'AIXE', 'SVRP', __ALPHA, __ALPHA, __ALPHA,
+    '-', 'ECWP', 'AIXE', 'SVRP', '-', __ALPHA, __ALPHA, __ALPHA, '-',
     __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, -7,
-    __NUMERIC, __NUMERIC, '0134', '05',
-    '0123', __NUMERIC, __NUMERIC, '012', __NUMERIC, '012345', __NUMERIC,
-    __ALPHA, __ALPHA, __ALPHA, __ALPHA, '/', 'N', 'W', 'S'
+    '+', __NUMERIC, __NUMERIC, '0134', '05', '-',
+    '0123', __NUMERIC, __NUMERIC, '012', __NUMERIC, '012345', __NUMERIC, '-',
+    __ALPHA, __ALPHA, __ALPHA, __ALPHA, '/', 'N', 'W', 'S', '-'
     ]
     
     '-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀḖḀỻờ~ỿ'
     '''
+
+    @staticmethod
+    def check_fips(chunk, confidences, ixlist):
+        recheck = []
+        matched1 = False
+        for ix in ixlist:
+            chunk, confidences, matched = _reconcile_word(chunk, confidences, ix - 1, ['-'])
+            chunk, confidences, matched = _reconcile_word(chunk, confidences, ix,
+                                                          [(1.1, '0'), (1, '1'), (1, '2'), (1, '3'), (1, '4'),
+                                                            (1, '5'), (1, '6'), (1, '7'), (1, '8'), (1, '9')])
+            chunk, confidences, matched = _reconcile_word(chunk, confidences, ix + 1,
+                                                          list([x[-5:] for x in candidate_fips]))
+            matched1 |= matched
+            if matched:
+                if chunk[ix:ix + 6] in candidate_fips:
+                    candidate_fips.remove(chunk[ix:ix + 6])
+            else:
+                recheck.append(ix)
+        return chunk, confidences, matched1, recheck
 
     @staticmethod
     def approximate_chars(chars, confidences, bitstrue, bitsfalse, byte_pattern_index):
@@ -477,24 +541,6 @@ class MessageChunk:
         return chars_to_return, confidences_to_return, byte_pattern_index
 
 
-# this is for dealing with country code arrays in headers, changes them to individual entries instead of arrays
-def dearray(array):
-    # keep track of where we are in the array so we know where to reinsert members
-    index = 0
-    for i in array:
-        if type(i) is list:
-            # this is what we want to free from its array prison
-            array_to_dearray = array[index]
-            del array[index]
-            # this needs to be a temp value so we don't screw up the actual index
-            insertion_index = index
-            for j in array_to_dearray:
-                array.insert(insertion_index, j)
-                insertion_index += 1
-        index += 1
-    return array
-
-
 def average_message(headers, transmitter):
     """
     Compute the correct message by averaging headers, restricting input to the valid character set, and filling
@@ -513,8 +559,6 @@ def average_message(headers, transmitter):
     # 4. Lay down all the sentinel characters
     # 5. Check that characters are in the valid set for the section of the message
     # 6. Substitute any low-confidence data with data from the list of possible values
-    # TODO factor this into different functions to do the work and test them separately
-    from ..sources.radio.nwr_data import get_counties, get_wfo
 
     # init
     confidences = []
@@ -583,70 +627,6 @@ def average_message(headers, transmitter):
         for char, con in list(zip(chunk.chars, chunk.confidences)):
             avgmsg += char
             confidences.append(con)
-
-    # Now break the message into its parts and clean up each one
-    avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, 1, _ORIGINATOR_CODES)
-    avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, 5, _EVENT_CODES)
-
-    # Reconcile FIPS codes (which, in some non-weather types of messages, may not be FIPS)
-    try:
-        candidate_fips = list(get_counties(transmitter))
-    except KeyError:
-        candidate_fips = []
-
-    try:
-        wfo = [get_wfo(transmitter)]
-    except KeyError:
-        wfo = []
-
-    # TODO: this needs to be put in MessageChunk constructor before approximate_chars()
-    # We need the confidences in test_dirty_messages() to be a 9 if no changes made to char
-    def check_fips(avgmsg, confidences, ixlist):
-        recheck = []
-        matched1 = False
-        for ix in ixlist:
-            avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, ix - 1, ['-'])
-            avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, ix,
-                                                           [(1.1, '0'), (1, '1'), (1, '2'), (1, '3'), (1, '4'),
-                                                            (1, '5'), (1, '6'), (1, '7'), (1, '8'), (1, '9')])
-            avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, ix + 1,
-                                                           list([x[-5:] for x in candidate_fips]))
-            matched1 |= matched
-            if matched:
-                if avgmsg[ix:ix + 6] in candidate_fips:
-                    candidate_fips.remove(avgmsg[ix:ix + 6])
-            else:
-                recheck.append(ix)
-        return avgmsg, confidences, matched1, recheck
-
-    # Check off counties until the maximum number have been reconciled
-    matched = True
-    recheck = range(9, len(avgmsg) - 23, 7)
-    while matched and len(recheck) > 0:
-        avgmsg, confidences, matched, recheck = check_fips(avgmsg, confidences, recheck)
-    # TODO add a modest bias for adjacent counties to resolve ties in bytes
-
-    # Reconcile purge time
-    ix = len(avgmsg) - 23
-    avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, ix, ['+'])
-    ix += 1
-    avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, ix, VALID_DURATIONS)
-
-    # Reconcile issue time
-    ix += 5
-    valid_times = []
-    for weight, offset in ((.5, -4), (.7, -3), (.9, -2), (1.1, -1), (1, 0)):
-        valid_times.append((weight, time.strftime('%j%H%M', time.gmtime(headers[0][2] + 60 * offset))))
-    avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, ix, valid_times)
-
-    # TODO: we need to incorporate '-' & '+' with confidences correctly
-
-    # Reconcile the end
-    ix += 8
-    avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, ix, wfo)
-
-    ix += 5
-    avgmsg, confidences, matched = _reconcile_word(avgmsg, confidences, ix, ['NWS'])
 
     return unicodify(avgmsg), confidences[0:len(avgmsg)]
 
