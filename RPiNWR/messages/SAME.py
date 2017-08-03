@@ -24,6 +24,7 @@ import threading
 import functools
 import calendar
 from .CommonMessage import CommonMessage
+from ..sources.radio.nwr_data import get_counties, get_wfo
 
 # See http://www.nws.noaa.gov/directives/sym/pd01017012curr.pdf
 # also https://www.gpo.gov/fdsys/pkg/CFR-2010-title47-vol1/xml/CFR-2010-title47-vol1-sec11-31.xml
@@ -156,7 +157,6 @@ _SAME_CHARS = [
 ]
 
 
-
 def _word_distance(word, confidence, choice, wildcard=None):
     d = 0
     for i in range(0, len(choice)):
@@ -181,7 +181,6 @@ def __median(lst):
 
 def _reconcile_word(msg, confidences, start, choices):
     """
-
     :param msg: the whole message
     :param confidences: confidences for each character in the message
     :param start: the index at which to look for the choices
@@ -372,19 +371,9 @@ class MessageChunk:
      group to approximate against: 'AIXE'
     """
 
-    # get FIPS and transmitter codes (which, in some non-weather types of messages, may not be FIPS)
-    try:
-        candidate_fips = list(SAMEMessage.get_counties(transmitter))
-    except KeyError:
-        candidate_fips = []
-
-    try:
-        wfo = [get_wfo(transmitter)]
-    except KeyError:
-        wfo = []
-
-    def __init__(self, chars, confidences, byte_confidence_index):
+    def __init__(self, chars, confidences, byte_confidence_index, transmitter):
         self.byte_confidence_index = byte_confidence_index
+        self.transmitter = transmitter
         bitstrue, bitsfalse = self.sum_confidence(chars, confidences)
         self.chars, self.confidences = self.assemble_chars(bitstrue, bitsfalse)
 
@@ -392,15 +381,25 @@ class MessageChunk:
         # Clean up chunks of chars before we attempt to approximate individual chars
         self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, _ORIGINATOR_CODES)
         self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 5, _EVENT_CODES)
-        # Check off counties until the maximum number have been reconciled
+
+        # get transmitter codes
+        try:
+            wfo = [get_wfo(self.transmitter)]
+        except KeyError:
+            wfo = []
+
+    # Check off counties until the maximum number have been reconciled
         matched = True
-        recheck = range(9, len(avgmsg) - 23, 7)
+        # TODO: this len needs to be a positive int
+        recheck = range(9, len(self.chars) - 23, 7)
         while matched and len(recheck) > 0:
-            self.chars, self.confidences, matched, recheck = check_fips(self.chars, self.confidences, recheck)
+            self.chars, self.confidences, matched, recheck = self.check_fips(self.chars, self.confidences,
+                                                                        recheck, self.transmitter)
         # TODO add a modest bias for adjacent counties to resolve ties in bytes
 
+        # TODO: this needs to take words without delimiters ('WXR', not '-WXR')
         # Reconcile purge time
-        ix = len(avgmsg) - 23
+        ix = len(self.chars) - 23
         self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, ix, ['+'])
         ix += 1
         self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, ix, VALID_DURATIONS)
@@ -489,7 +488,12 @@ class MessageChunk:
     '''
 
     @staticmethod
-    def check_fips(chunk, confidences, ixlist):
+    def check_fips(chunk, confidences, ixlist, transmitter):
+        # get FIPS codes (which, in some non-weather types of messages, may not be FIPS)
+        try:
+            candidate_fips = list(get_counties(transmitter))
+        except KeyError:
+            candidate_fips = []
         recheck = []
         matched1 = False
         for ix in ixlist:
@@ -617,7 +621,7 @@ def average_message(headers, transmitter):
             msgs = [c[0] for c in msg_con]
             # [[3, 3, 3,], [3, 3, 3], [3, 2, 3]]
             cons = [c[1] for c in msg_con]
-            chunk = MessageChunk(msgs, cons, byte_pattern_index)
+            chunk = MessageChunk(msgs, cons, byte_pattern_index, transmitter)
             # keep track of what chars we are comparing against
             byte_pattern_index = chunk.byte_confidence_index
             chunks.append(chunk)

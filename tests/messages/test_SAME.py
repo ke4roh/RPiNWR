@@ -590,6 +590,14 @@ class TestSAME(unittest.TestCase):
         self.assertEqual(expected_chars2, test_chars2)
         self.assertEqual(expected_confidences2, test_confidences2)
 
+    def test_check_fips(self):
+        chars = ['W', '\x00', 'R']
+        confidences = [72, 0, 72]
+        ix = range(1, 10, 1)
+        transmitter = 'WXL58'
+        fips_check = SAME.MessageChunk.check_fips(chars, confidences, ix, transmitter)
+        assert fips_check == (chars, confidences, True, [1, 'W'])
+
     def test__truncate(self):
 
         # NOTES:
