@@ -369,18 +369,16 @@ class MessageChunk:
     this value indexes that array as we approximate.  For example:
      char to approximate: Ḁ
      group to approximate against: 'AIXE'
+    :param transmitter: transmitter
     """
 
     def __init__(self, chars, confidences, byte_confidence_index, transmitter):
-        self.byte_confidence_index = byte_confidence_index
-        self.transmitter = transmitter
-        bitstrue, bitsfalse = self.sum_confidence(chars, confidences)
-        self.chars, self.confidences = self.assemble_chars(bitstrue, bitsfalse)
 
-        # TODO: this should only try a set of codes if it matches the byte_confidence_index
-        # Clean up chunks of chars before we attempt to approximate individual chars
-        self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, _ORIGINATOR_CODES)
-        self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 5, _EVENT_CODES)
+        # get FIPS codes (which, in some non-weather types of messages, may not be FIPS)
+        try:
+            candidate_fips = list(get_counties(self.transmitter))
+        except KeyError:
+            candidate_fips = []
 
         # get transmitter codes
         try:
@@ -388,16 +386,28 @@ class MessageChunk:
         except KeyError:
             wfo = []
 
-    # Check off counties until the maximum number have been reconciled
-        matched = True
-        # TODO: this len needs to be a positive int
-        recheck = range(9, len(self.chars), 7)
-        while matched and len(recheck) > 0:
-            self.chars, self.confidences, matched, recheck = self.check_fips(self.chars, self.confidences,
-                                                                        recheck, self.transmitter)
+        self.byte_confidence_index = byte_confidence_index
+        self.transmitter = transmitter
+        bitstrue, bitsfalse = self.sum_confidence(chars, confidences)
+        self.chars, self.confidences = self.assemble_chars(bitstrue, bitsfalse)
+
+        # Clean up chunks of chars before we attempt to approximate individual chars
+        # (hooray for pythonic "case" statements!)
+        if byte_confidence_index >= 1 or byte_confidence_index <= 3:
+            self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, _ORIGINATOR_CODES)
+        elif byte_confidence_index >= 5 or byte_confidence_index <= 7:
+            self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, _EVENT_CODES)
+        elif byte_confidence_index >= 9 or byte_confidence_index <= 14:
+            # Check off counties until the maximum number have been reconciled
+            matched = True
+            # TODO: this len needs to be a positive int
+            recheck = range(9, len(self.chars), 7)
+            while matched and len(recheck) > 0:
+                self.chars, self.confidences, matched, recheck = self.check_fips(self.chars, self.confidences,
+                                                                                 recheck, candidate_fips)
+
         # TODO add a modest bias for adjacent counties to resolve ties in bytes
 
-        # TODO: this needs to take words without delimiters ('WXR', not '-WXR')
         # Reconcile purge time
         ix = len(self.chars) - 23
         self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, ix, ['+'])
@@ -489,12 +499,7 @@ class MessageChunk:
 
     # TODO: this should ONLY proc if we check county codes
     @staticmethod
-    def check_fips(chunk, confidences, ixlist, transmitter):
-        # get FIPS codes (which, in some non-weather types of messages, may not be FIPS)
-        try:
-            candidate_fips = list(get_counties(transmitter))
-        except KeyError:
-            candidate_fips = []
+    def check_fips(chunk, confidences, ixlist, candidate_fips):
         recheck = []
         matched1 = False
         for ix in ixlist:

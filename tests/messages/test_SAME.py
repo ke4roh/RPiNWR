@@ -591,11 +591,15 @@ class TestSAME(unittest.TestCase):
         self.assertEqual(expected_confidences2, test_confidences2)
 
     def test_check_fips(self):
+        # get FIPS codes (which, in some non-weather types of messages, may not be FIPS)
+        try:
+            candidate_fips = list(get_counties('WXL58'))
+        except KeyError:
+            candidate_fips = []
         chars = ['0', '3', '7', '0', '7', '7']
         confidences = [0, 0, 0, 0, 0, 0]
         ix = range(len(chars))
-        transmitter = 'WXL58'
-        fips_check = SAME.MessageChunk.check_fips(chars, confidences, ix, transmitter)
+        fips_check = SAME.MessageChunk.check_fips(chars, confidences, ix, candidate_fips)
         print(fips_check)
         assert fips_check == (chars, confidences, True, [])
 
