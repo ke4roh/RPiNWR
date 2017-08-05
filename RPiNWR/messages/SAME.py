@@ -391,7 +391,7 @@ class MessageChunk:
     # Check off counties until the maximum number have been reconciled
         matched = True
         # TODO: this len needs to be a positive int
-        recheck = range(9, len(self.chars) - 23, 7)
+        recheck = range(9, len(self.chars), 7)
         while matched and len(recheck) > 0:
             self.chars, self.confidences, matched, recheck = self.check_fips(self.chars, self.confidences,
                                                                         recheck, self.transmitter)
@@ -487,6 +487,7 @@ class MessageChunk:
     '-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀḖḀỻờ~ỿ'
     '''
 
+    # TODO: this should ONLY proc if we check county codes
     @staticmethod
     def check_fips(chunk, confidences, ixlist, transmitter):
         # get FIPS codes (which, in some non-weather types of messages, may not be FIPS)
@@ -502,7 +503,7 @@ class MessageChunk:
                                                           [(1.1, '0'), (1, '1'), (1, '2'), (1, '3'), (1, '4'),
                                                             (1, '5'), (1, '6'), (1, '7'), (1, '8'), (1, '9')])
             chunk, confidences, matched = _reconcile_word(chunk, confidences, ix + 1,
-                                                          list([x[-5:] for x in candidate_fips]))
+                                                          [x[-5:] for x in candidate_fips])
             matched1 |= matched
             if matched:
                 if chunk[ix:ix + 6] in candidate_fips:
