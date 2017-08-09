@@ -226,8 +226,6 @@ def _reconcile_word(msg, confidences, start, choices):
         msg = "".join(l)
         matched = True
     return msg, confidences, matched
-    return msg, confidences, matched
-
 
 _END_SEQUENCE = "+0___-_______-____/NWS-"
 
@@ -302,6 +300,8 @@ def split_message(message, confidences):
     main_delimiter = message[len(message)-23]
     final_message = []
     final_confidences = []
+    # counts number of county codes, we need to return this for later use in avgmsg()
+    fips_counter = 0
 
     # start splitting!
     main_delimiter_split = message.split(main_delimiter)
@@ -319,6 +319,7 @@ def split_message(message, confidences):
         final_message.append('-' + (first_half_split[2]))
         for i in range(3, len(first_half_split)):
             final_message.append('-' + first_half_split[i])
+            fips_counter += 1
 
         # second half:
         final_message.append('+' + (second_half_split[0]))
@@ -350,7 +351,7 @@ def split_message(message, confidences):
         # empty out con_set
         con_set = []
 
-    return [final_message, final_confidences]
+    return [final_message, final_confidences, fips_counter]
 
 
 class MessageChunk:
@@ -374,6 +375,9 @@ class MessageChunk:
 
     def __init__(self, chars, confidences, byte_confidence_index, transmitter):
 
+        self.byte_confidence_index = byte_confidence_index
+        self.transmitter = transmitter
+
         # get FIPS codes (which, in some non-weather types of messages, may not be FIPS)
         try:
             candidate_fips = list(get_counties(self.transmitter))
@@ -386,47 +390,43 @@ class MessageChunk:
         except KeyError:
             wfo = []
 
-        self.byte_confidence_index = byte_confidence_index
-        self.transmitter = transmitter
         bitstrue, bitsfalse = self.sum_confidence(chars, confidences)
         self.chars, self.confidences = self.assemble_chars(bitstrue, bitsfalse)
 
         # Clean up chunks of chars before we attempt to approximate individual chars
         # (hooray for pythonic "case" statements!)
-        if byte_confidence_index >= 1 or byte_confidence_index <= 3:
+        if 0 <= byte_confidence_index <= 3:
             self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, _ORIGINATOR_CODES)
-        elif byte_confidence_index >= 5 or byte_confidence_index <= 7:
+        elif 4 <= byte_confidence_index <= 6:
             self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, _EVENT_CODES)
-        elif byte_confidence_index >= 9 or byte_confidence_index <= 14:
+        elif 7 <= byte_confidence_index <= 12:
+            # TODO add a modest bias for adjacent counties to resolve ties in bytes
             # Check off counties until the maximum number have been reconciled
             matched = True
             # TODO: this len needs to be a positive int
-            recheck = range(9, len(self.chars), 7)
-            while matched and len(recheck) > 0:
+            # recheck = range(9, len(self.chars), 7)
+            recheck = len(self.chars)
+            while matched and recheck > 0:
                 self.chars, self.confidences, matched, recheck = self.check_fips(self.chars, self.confidences,
                                                                                  recheck, candidate_fips)
 
-        # TODO add a modest bias for adjacent counties to resolve ties in bytes
-
         # Reconcile purge time
-        ix = len(self.chars) - 23
-        self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, ix, ['+'])
-        ix += 1
-        self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, ix, VALID_DURATIONS)
+        elif 13 <= byte_confidence_index <= 17:
+            self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, VALID_DURATIONS)
 
         # Reconcile issue time
-        ix += 5
-        valid_times = []
-        for weight, offset in ((.5, -4), (.7, -3), (.9, -2), (1.1, -1), (1, 0)):
-            valid_times.append((weight, time.strftime('%j%H%M', time.gmtime(headers[0][2] + 60 * offset))))
-        self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, ix, valid_times)
+        elif 18 <= byte_confidence_index <= 24:
+            valid_times = []
+            for weight, offset in ((.5, -4), (.7, -3), (.9, -2), (1.1, -1), (1, 0)):
+                valid_times.append((weight, time.strftime('%j%H%M', time.gmtime(headers[0][2] + 60 * offset))))
+            self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, valid_times)
 
         # Reconcile the end
-        ix += 8
-        self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, ix, wfo)
+        elif 25 <= byte_confidence_index <= 29:
+            self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, wfo)
 
-        ix += 5
-        self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, ix, ['NWS'])
+        elif 30 <= byte_confidence_index <= 33:
+            self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, ['NWS'])
 
         # After cleaning up by word, we clean up by char
         self.chars, self.confidences, self.byte_confidence_index = self.approximate_chars(self.chars, self.confidences,
@@ -503,7 +503,7 @@ class MessageChunk:
         recheck = []
         matched1 = False
         for ix in ixlist:
-            chunk, confidences, matched = _reconcile_word(chunk, confidences, ix - 1, ['-'])
+            # chunk, confidences, matched = _reconcile_word(chunk, confidences, ix - 1, ['-'])
             chunk, confidences, matched = _reconcile_word(chunk, confidences, ix,
                                                           [(1.1, '0'), (1, '1'), (1, '2'), (1, '3'), (1, '4'),
                                                             (1, '5'), (1, '6'), (1, '7'), (1, '8'), (1, '9')])
@@ -588,6 +588,7 @@ def average_message(headers, transmitter):
         split_con = split[1]
         i[0] = split_msg
         i[1] = split_con
+        fips_counter = split[2]
 
     # [originator_code, event_code, location_codes, purge_time, exact_time, callsign]
 

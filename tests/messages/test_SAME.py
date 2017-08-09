@@ -601,7 +601,7 @@ class TestSAME(unittest.TestCase):
         ix = range(len(chars))
         fips_check = SAME.MessageChunk.check_fips(chars, confidences, ix, candidate_fips)
         print(fips_check)
-        assert fips_check == (chars, confidences, True, [])
+        assert fips_check == (''.join(chars), confidences, True, [1, 2, 3, 4, 5])
 
     def test__truncate(self):
 
