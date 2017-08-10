@@ -373,11 +373,14 @@ class MessageChunk:
     :param transmitter: transmitter
     """
 
-    def __init__(self, chars, confidences, byte_confidence_index, transmitter):
+    def __init__(self, chars, confidences, byte_confidence_index, transmitter, fips_counter, valid_times):
 
         self.byte_confidence_index = byte_confidence_index
         self.transmitter = transmitter
+        self.fips_counter = fips_counter
+        self.valid_times = valid_times
 
+        # TODO: do this once and pass into constructor
         # get FIPS codes (which, in some non-weather types of messages, may not be FIPS)
         try:
             candidate_fips = list(get_counties(self.transmitter))
@@ -403,12 +406,13 @@ class MessageChunk:
             # TODO add a modest bias for adjacent counties to resolve ties in bytes
             # Check off counties until the maximum number have been reconciled
             matched = True
-            # TODO: this len needs to be a positive int
-            # recheck = range(9, len(self.chars), 7)
-            recheck = len(self.chars)
-            while matched and recheck > 0:
-                self.chars, self.confidences, matched, recheck = self.check_fips(self.chars, self.confidences,
-                                                                                 recheck, candidate_fips)
+            while matched and fips_counter > 0:
+                '''
+                self.chars, self.confidences, matched, fips_counter = self.check_fips(self.chars, self.confidences,
+                                                                                 fips_counter, candidate_fips)
+                '''
+                self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, candidate_fips)
+                fips_counter -= 1
 
         # Reconcile purge time
         elif 13 <= byte_confidence_index <= 17:
@@ -416,9 +420,6 @@ class MessageChunk:
 
         # Reconcile issue time
         elif 18 <= byte_confidence_index <= 24:
-            valid_times = []
-            for weight, offset in ((.5, -4), (.7, -3), (.9, -2), (1.1, -1), (1, 0)):
-                valid_times.append((weight, time.strftime('%j%H%M', time.gmtime(headers[0][2] + 60 * offset))))
             self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, valid_times)
 
         # Reconcile the end
@@ -497,6 +498,7 @@ class MessageChunk:
     '-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀḖḀỻờ~ỿ'
     '''
 
+    '''
     # TODO: this should ONLY proc if we check county codes
     @staticmethod
     def check_fips(chunk, confidences, ixlist, candidate_fips):
@@ -516,6 +518,7 @@ class MessageChunk:
             else:
                 recheck.append(ix)
         return chunk, confidences, matched1, recheck
+    '''
 
     @staticmethod
     def approximate_chars(chars, confidences, bitstrue, bitsfalse, byte_pattern_index):
@@ -576,6 +579,9 @@ def average_message(headers, transmitter):
     avgmsg = []
     chunks = []
     valid_code_list = [_DURATION_NUMBERS, _EVENT_CODES, _ORIGINATOR_CODES]
+    valid_times = []
+    for weight, offset in ((.5, -4), (.7, -3), (.9, -2), (1.1, -1), (1, 0)):
+        valid_times.append((weight, time.strftime('%j%H%M', time.gmtime(headers[0][2] + 60 * offset))))
 
     # TODO: change this so it checks each part of the message separately
     # TODO: fix this so location codes are no longer an array
@@ -628,7 +634,7 @@ def average_message(headers, transmitter):
             msgs = [c[0] for c in msg_con]
             # [[3, 3, 3,], [3, 3, 3], [3, 2, 3]]
             cons = [c[1] for c in msg_con]
-            chunk = MessageChunk(msgs, cons, byte_pattern_index, transmitter)
+            chunk = MessageChunk(msgs, cons, byte_pattern_index, transmitter, fips_counter, valid_times)
             # keep track of what chars we are comparing against
             byte_pattern_index = chunk.byte_confidence_index
             chunks.append(chunk)
