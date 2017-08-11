@@ -165,6 +165,7 @@ class TestSAME(unittest.TestCase):
         logging.basicConfig(level=logging.INFO)
         messages = self.load_dirty_messages()
         for msg in messages:
+            print(msg)
             msg["calculated"] = average_message(msg["headers"], msg["transmitter"])
 
             # TODO: Fix this issue and combine messages:
@@ -184,13 +185,13 @@ class TestSAME(unittest.TestCase):
             
             Current(dev):
             'headers':
-            [[['WḀR', 'SVR', ['0Ḁ7183'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
+            [[['WḀR', 'SVR', '0Ḁ7183', '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
               [[3, 3, 3], [3, 3, 3], [[3, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 2]],
               1462219406.538715],
-             [['WḀR', 'SVR', ['0Ḁ7183'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
+             [['WḀR', 'SVR', '0Ḁ7183', '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
               [[3, 3, 3], [3, 3, 3], [[3, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 3]],
               1462219408.5504122],
-             [['WḀR', 'SVR', ['0Ḁ7183'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
+             [['WḀR', 'SVR', '0Ḁ7183', '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
               [[3, 3, 3], [3, 3, 3], [[2, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 3]],
               1462219410.5092943]]
             '''
@@ -468,9 +469,12 @@ class TestSAME(unittest.TestCase):
     def test_check_if_valid_code(self):
         test_codes = ['WXR', 'W^X', 'WXR']
         test_codes_2 = ['&%$', 'T5+', 'XXX']
+        test_codes_3 = ['SVR', 'SVR', 'SVR']
         test_valid_list = SAME._ORIGINATOR_CODES
+        test_valid_list_2 = SAME._EVENT_CODES
         self.assertTrue(SAME.check_if_valid_code(test_codes, test_valid_list))
         self.assertFalse(SAME.check_if_valid_code(test_codes_2, test_valid_list))
+        self.assertTrue(SAME.check_if_valid_code(test_codes_3, test_valid_list_2))
 
     def test_split_message(self):
 

@@ -283,6 +283,7 @@ def _truncate(avgmsg, confidences):
 # clean message: -WXR-TOR-039173-039051-139069+0030-1591829-KCLE/NWS
 # dirty message: -WXR-RWT-020103-020209-020091-°20121-029047-029165%029095-029037;0030-3031710,KEAX\\'ÎWS-
 
+# TODO: split the end of the message (KCLE/NWS) into separate parts
 def split_message(message, confidences):
 
     # first, truncate the message and separate message and confidences
@@ -380,7 +381,7 @@ class MessageChunk:
         self.fips_counter = fips_counter
         self.valid_times = valid_times
 
-        # TODO: do this once and pass into constructor
+        # TODO: do this once and pass into constructor, add back to avgmsg
         # get FIPS codes (which, in some non-weather types of messages, may not be FIPS)
         try:
             candidate_fips = list(get_counties(self.transmitter))
@@ -577,14 +578,23 @@ def average_message(headers, transmitter):
     confidences = []
     byte_pattern_index = 0
     avgmsg = []
-    chunks = []
-    valid_code_list = [_DURATION_NUMBERS, _EVENT_CODES, _ORIGINATOR_CODES]
     valid_times = []
     for weight, offset in ((.5, -4), (.7, -3), (.9, -2), (1.1, -1), (1, 0)):
         valid_times.append((weight, time.strftime('%j%H%M', time.gmtime(headers[0][2] + 60 * offset))))
+    # get FIPS codes (which, in some non-weather types of messages, may not be FIPS)
+    try:
+        candidate_fips = list(get_counties(transmitter))
+    except KeyError:
+        candidate_fips = []
+    # get transmitter codes
+    try:
+        wfo = [get_wfo(transmitter)]
+    except KeyError:
+        wfo = []
+
+    valid_code_list = [_DURATION_NUMBERS, _EVENT_CODES, _ORIGINATOR_CODES, valid_times, tuple([x[1] for x in _EVENT_TYPES]), wfo]
 
     # TODO: change this so it checks each part of the message separately
-    # TODO: fix this so location codes are no longer an array
     # First, break up the message into its component parts
     for i in headers:
         msg = i[0]
@@ -611,38 +621,38 @@ def average_message(headers, transmitter):
     # main loop
     # length of the broken up message
     for i in range(0, len(headers[0][0])):
+        '''
         # Check if we have valid codes already
         # TODO: improve this so it doesn't check every code against every part of the message (use dict?)
-        valid_code = ''
+        # TODO: we have to rework this so it also increments the byte counter
         for j in valid_code_list:
-            for k in j:
-                # check against each valid code list
-                # [WXR, WAR, WRR]
-                # we need to slice off the delimiters before we check for valid codes
-                valid_code = check_if_valid_code([code[0][i][1:] for code in headers], k)
-        # if it's valid, add it to our final message
-        if valid_code:
-            avgmsg += valid_code
+            # check against each valid code list
+            # [WXR, WAR, WRR]
+            # we need to slice off the delimiters before we check for valid codes
+            valid_code = check_if_valid_code([code[0][i][1:] for code in headers], j)
+            # if it's valid, add it to our final message
+            if valid_code:
+                # TODO: we'll need to add confidences to final list here too
+                avgmsg += valid_code
+                break
         # if it's not valid, we have to approximate
         else:
-            '''
-            this is a triplet of each message chunk from each of the three messages, e.g. [WGV, WG%, W%!]
-            [('WXR', [3, 3, 3]), ('WXR', [3, 3, 3]), ('WXR', [3, 3, 3])]
-            '''
-            msg_con = list(zip([c[0][i] for c in headers], [c[1][i] for c in headers]))
-            # ['WXR', 'WXX', 'WXR']
-            msgs = [c[0] for c in msg_con]
-            # [[3, 3, 3,], [3, 3, 3], [3, 2, 3]]
-            cons = [c[1] for c in msg_con]
-            chunk = MessageChunk(msgs, cons, byte_pattern_index, transmitter, fips_counter, valid_times)
-            # keep track of what chars we are comparing against
-            byte_pattern_index = chunk.byte_confidence_index
-            chunks.append(chunk)
-
-    # add message and cons to full message and confidence array
-    for chunk in chunks:
-        for char, con in list(zip(chunk.chars, chunk.confidences)):
-            avgmsg += char
+        '''
+        '''
+        this is a triplet of each message chunk from each of the three messages, e.g. [WGV, WG%, W%!]
+        [('WXR', [3, 3, 3]), ('WXR', [3, 3, 3]), ('WXR', [3, 3, 3])]
+        '''
+        msg_con = list(zip([c[0][i] for c in headers], [c[1][i] for c in headers]))
+        # ['WXR', 'WXX', 'WXR']
+        msgs = [c[0] for c in msg_con]
+        # [[3, 3, 3,], [3, 3, 3], [3, 2, 3]]
+        cons = [c[1] for c in msg_con]
+        chunk = MessageChunk(msgs, cons, byte_pattern_index, transmitter, fips_counter, valid_times)
+        # keep track of what chars we are comparing against
+        byte_pattern_index = chunk.byte_confidence_index
+        # add chars and confidences to final lists
+        avgmsg += chunk.chars
+        for con in chunk.confidences:
             confidences.append(con)
 
     return unicodify(avgmsg), confidences[0:len(avgmsg)]
