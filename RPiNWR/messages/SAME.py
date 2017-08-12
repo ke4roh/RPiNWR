@@ -104,19 +104,14 @@ VALID_DURATIONS = (
 
 _DURATION_NUMBERS = tuple([x[1] for x in VALID_DURATIONS])
 
-# takes a list of codes and a list of valid codes, and checks to make sure most of the codes correspond to a valid list
-# e.g. if we have a list of ['WXR', 'W^X', 'WXR'] we should get the result that this is a valid originator code
+# takes a list of codes and a list of valid codes, and checks to make sure all of the codes correspond to a valid list
+# e.g. if we have a list of ['WXR', 'WXR', 'WXR'] we should get the result that this is a valid originator code
 
 
 def check_if_valid_code(codes, valid_list):
-    code_list = []
-    # Check if we have two matching and valid codes
-    for c in codes:
-        # if it's already in code_list we know 2 out of 3 of the codes are the same
-        if c in valid_list and c in code_list:
-            return c
-        else:
-            code_list.append(c)
+    # Check if we have three matching and valid codes
+    if set(valid_list).issuperset(codes) and codes[0] == codes[1] and codes[1] == codes[2]:
+        return codes[0]
 
 
 def _reconcile_character(bitstrue, bitsfalse, pattern):
@@ -430,6 +425,8 @@ class MessageChunk:
 
         elif 30 <= byte_confidence_index <= 33:
             self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, ['NWS'])
+
+        # TODO: add if matched: skip here
 
         # After cleaning up by word, we clean up by char
         self.chars, self.confidences, self.byte_confidence_index = self.approximate_chars(self.chars, self.confidences,

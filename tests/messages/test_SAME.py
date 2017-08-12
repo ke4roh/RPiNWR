@@ -472,7 +472,7 @@ class TestSAME(unittest.TestCase):
         test_codes_3 = ['SVR', 'SVR', 'SVR']
         test_valid_list = SAME._ORIGINATOR_CODES
         test_valid_list_2 = SAME._EVENT_CODES
-        self.assertTrue(SAME.check_if_valid_code(test_codes, test_valid_list))
+        self.assertFalse(SAME.check_if_valid_code(test_codes, test_valid_list))
         self.assertFalse(SAME.check_if_valid_code(test_codes_2, test_valid_list))
         self.assertTrue(SAME.check_if_valid_code(test_codes_3, test_valid_list_2))
 
