@@ -375,6 +375,9 @@ class MessageChunk:
         self.transmitter = transmitter
         self.fips_counter = fips_counter
         self.valid_times = valid_times
+        matched = False
+        # this tracks the amount we need to increment the byte_confidence_index if reconcile_word returns a match
+        potential_byte_confidence_index_offset = 0
 
         # TODO: do this once and pass into constructor, add back to avgmsg
         # get FIPS codes (which, in some non-weather types of messages, may not be FIPS)
@@ -396,41 +399,48 @@ class MessageChunk:
         # (hooray for pythonic "case" statements!)
         if 0 <= byte_confidence_index <= 3:
             self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, _ORIGINATOR_CODES)
+            potential_byte_confidence_index_offset += 4
         elif 4 <= byte_confidence_index <= 6:
             self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, _EVENT_CODES)
+            potential_byte_confidence_index_offset += 4
         elif 7 <= byte_confidence_index <= 12:
             # TODO add a modest bias for adjacent counties to resolve ties in bytes
             # TODO: change this so we end at fixing by word if we don't have to fix more than 1 byte, otherwise fix by byte (HINT: check the 'matched' value)
             # Check off counties until the maximum number have been reconciled
-            matched = True
-            while matched and fips_counter > 0:
+            while fips_counter > 0:
                 '''
                 self.chars, self.confidences, matched, fips_counter = self.check_fips(self.chars, self.confidences,
                                                                                  fips_counter, candidate_fips)
                 '''
                 self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, candidate_fips)
                 fips_counter -= 1
+                potential_byte_confidence_index_offset += 7
 
-        # Reconcile purge time
+    # Reconcile purge time
         elif 13 <= byte_confidence_index <= 17:
             self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, VALID_DURATIONS)
+            potential_byte_confidence_index_offset += 5
 
-        # Reconcile issue time
+    # Reconcile issue time
         elif 18 <= byte_confidence_index <= 24:
             self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, valid_times)
+            potential_byte_confidence_index_offset += 7
 
-        # Reconcile the end
+    # Reconcile the end
         elif 25 <= byte_confidence_index <= 29:
             self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, wfo)
+            potential_byte_confidence_index_offset += 5
 
         elif 30 <= byte_confidence_index <= 33:
             self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, ['NWS'])
+            potential_byte_confidence_index_offset += 5
 
-        # TODO: add if matched: skip here
-
-        # After cleaning up by word, we clean up by char
-        self.chars, self.confidences, self.byte_confidence_index = self.approximate_chars(self.chars, self.confidences,
-                                                                       bitstrue, bitsfalse, self.byte_confidence_index)
+    # After cleaning up by word, we clean up by char if we had to change more than one byte
+        if not matched:
+            self.chars, self.confidences, self.byte_confidence_index = self.approximate_chars(self.chars,
+                                                self.confidences, bitstrue, bitsfalse, self.byte_confidence_index)
+        else:
+            self.byte_confidence_index += potential_byte_confidence_index_offset
 
     # takes chars and computes sums of confidence of bit values
     @staticmethod
@@ -497,7 +507,6 @@ class MessageChunk:
     '-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀḖḀỻờ~ỿ'
     '''
 
-    '''
     # TODO: this should ONLY proc if we check county codes
     @staticmethod
     def check_fips(chunk, confidences, ixlist, candidate_fips):
@@ -517,7 +526,6 @@ class MessageChunk:
             else:
                 recheck.append(ix)
         return chunk, confidences, matched1, recheck
-    '''
 
     @staticmethod
     def approximate_chars(chars, confidences, bitstrue, bitsfalse, byte_pattern_index):
