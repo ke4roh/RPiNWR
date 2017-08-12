@@ -405,6 +405,7 @@ class MessageChunk:
             self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, _EVENT_CODES)
         elif 7 <= byte_confidence_index <= 12:
             # TODO add a modest bias for adjacent counties to resolve ties in bytes
+            # TODO: change this so we end at fixing by word if we don't have to fix more than 1 byte, otherwise fix by byte (HINT: check the 'matched' value)
             # Check off counties until the maximum number have been reconciled
             matched = True
             while matched and fips_counter > 0:
