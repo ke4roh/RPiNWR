@@ -215,6 +215,9 @@ def _reconcile_word(msg, confidences, start, choices):
         for i in range(start, end):
             if msg[i] != word[i - start]:
                 confidences[i] = base_confidence
+            else:
+                # added to ensure that we don't get confidences over 9
+                confidences[i] = min(9, base_confidence >> 3)
         # replace the word
         l = list(msg)
         l[start:end] = list(word)
@@ -414,7 +417,7 @@ class MessageChunk:
                 '''
                 self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, candidate_fips)
                 fips_counter -= 1
-                potential_byte_confidence_index_offset += 7
+            potential_byte_confidence_index_offset += 7
 
     # Reconcile purge time
         elif 13 <= byte_confidence_index <= 17:
