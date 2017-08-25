@@ -553,6 +553,7 @@ class MessageChunk:
                 # It will get shifted back in a moment
                 byte_confidence <<= 3
             if not multipath:
+                # TODO: fix this so it doesn't increment past 39
                 byte_pattern_index += 1
             else:
                 if c in _SAME_CHARS[byte_pattern_index + 1]:
