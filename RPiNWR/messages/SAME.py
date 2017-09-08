@@ -543,7 +543,6 @@ class MessageChunk:
             c = chars[i]
             # pass in the groups of confidences that correspond to the char in chars[i]
             byte_confidence = confidences[i]
-            # same = _SAME__SAME_CHARS
             pattern = _SAME_CHARS[byte_pattern_index]
             # Where the pattern can repeat (e.g. county codes), multipath supports both routes
             multipath = None
@@ -668,7 +667,7 @@ def average_message(headers, transmitter):
         # add chars and confidences to final lists
         avgmsg += chunk.chars
         for con in chunk.confidences:
-            confidences.append(con)
+            confidences.append(min(9, con))
 
     print(confidences)
     return unicodify(avgmsg), confidences[0:len(avgmsg)]
