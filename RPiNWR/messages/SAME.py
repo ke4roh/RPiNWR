@@ -213,6 +213,7 @@ def _reconcile_word(msg, confidences, start, choices):
         # Update the confidence
         base_confidence = max(0, int(max(4, max(confidences[start:end])) - candidates[0][0] / (end - start)))
         for i in range(start, end):
+            # TODO: this needs to be limited to a max of 9
             if msg[i] != word[i - start]:
                 confidences[i] = base_confidence
             else:
@@ -425,6 +426,7 @@ class MessageChunk:
             potential_byte_confidence_index_offset += 5
 
     # Reconcile issue time
+    # TODO: fix this so it matches up with the '+' correctly (index 20)
         elif 18 <= byte_confidence_index <= 24:
             self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, valid_times)
             potential_byte_confidence_index_offset += 7
@@ -479,6 +481,7 @@ class MessageChunk:
         return bitstrue, bitsfalse
 
     # takes a list of true bits and false bits and assembles characters from those lists
+    # TODO: this needs to limit confidences to a max of 9
     @staticmethod
     def assemble_chars(bitstrue, bitsfalse):
         # the resultant averaged group of chars we get from the bits
@@ -534,6 +537,8 @@ class MessageChunk:
     def approximate_chars(chars, confidences, bitstrue, bitsfalse, byte_pattern_index):
         chars_to_return = []
         confidences_to_return = []
+        # we need a separate counter just for this function so we don't get an IndexError
+        byte_pattern_counter = byte_pattern_index
         for i in range(0, len(chars)):
             c = chars[i]
             # pass in the groups of confidences that correspond to the char in chars[i]
@@ -554,12 +559,12 @@ class MessageChunk:
                 byte_confidence <<= 3
             if not multipath:
                 # TODO: fix this so it doesn't increment past 39
-                byte_pattern_index += 1
+                byte_pattern_counter += 1
             else:
                 if c in _SAME_CHARS[byte_pattern_index + 1]:
-                    byte_pattern_index += 2
+                    byte_pattern_counter += 2
                 else:
-                    byte_pattern_index += multipath + 1
+                    byte_pattern_counter += multipath + 1
             chars_to_return.append(c)
             confidences_to_return.append(min(9, byte_confidence >> 3))
         return chars_to_return, confidences_to_return, byte_pattern_index
@@ -665,6 +670,7 @@ def average_message(headers, transmitter):
         for con in chunk.confidences:
             confidences.append(con)
 
+    print(confidences)
     return unicodify(avgmsg), confidences[0:len(avgmsg)]
 
 # -WXR-TOR-039173-039051-139069+0030-1591829-KCLE/NWS
