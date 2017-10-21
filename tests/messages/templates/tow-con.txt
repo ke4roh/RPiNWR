@@ -1,0 +1,57 @@
+376
+WWUS52 KRAH 012216
+SVSRAH
+
+Severe Weather Statement
+National Weather Service Raleigh NC
+{{ header_time(start) }}
+
+NCC085-012245-
+/O.CON.KRAH.TO.W.{{ vtec_serial|default('0018') }}.000000T0000Z-{{ vtec_ts(end) }}Z/
+Harnett NC-
+{{ header_time(start) }}
+
+...A TORNADO WARNING REMAINS IN EFFECT UNTIL 645 PM EDT FOR CENTRAL
+HARNETT COUNTY...
+
+At 616 PM EDT, a severe thunderstorm capable of producing a tornado
+was located near Lillington, moving east at 45 mph.
+
+HAZARD...Tornado.
+
+SOURCE...Radar indicated rotation.
+
+IMPACT...Flying debris will be dangerous to those caught without
+         shelter. Mobile homes will be damaged or destroyed. Damage
+         to roofs, windows, and vehicles will occur.  Tree damage is
+         likely.
+
+Locations impacted include...
+Lillington, Dunn, Angier, Erwin, Coats, Anderson Creek, Timberlake,
+Raven Rock State Park and Buies Creek.
+
+PRECAUTIONARY/PREPAREDNESS ACTIONS...
+
+TAKE COVER NOW! Move to a basement or an interior room on the lowest
+floor of a sturdy building. Avoid windows. If you are outdoors, in a
+mobile home, or in a vehicle, move to the closest substantial shelter
+and protect yourself from flying debris.
+
+If a tornado or other severe weather is spotted, report it to the
+National Weather Service or your local nearest law enforcement agency
+who will send your report. This act may save lives of others in the
+path of dangerous weather.
+
+&&
+
+LAT...LON {{ flat_poly(polygon)|default('3553 7877 3541 7863 3526 7864 3526 7880
+                3521 7898 3521 7901 3539 7906') }}
+
+TIME...MOT...LOC 2216Z 251DEG 39KT 3535 7887
+
+TORNADO...RADAR INDICATED
+HAIL...<.75IN
+
+$$
+
+GIH

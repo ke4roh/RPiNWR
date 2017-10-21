@@ -495,6 +495,9 @@ class SAMEMessage(CommonMessage):
             self.timeout = time.time() + 6
         return complete
 
+    def is_interpreted_cleanly(self):
+        return SAME_PATTERN.fullmatch(self.get_SAME_message()[0])
+
     def get_SAME_message(self):
         if self.fully_received():
             if self.__avg_message is None:

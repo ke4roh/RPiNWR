@@ -20,7 +20,7 @@ __author__ = 'ke4roh'
 import logging
 from .data import *
 from .events import *
-import RPiNWR.messages.SAME as SAME
+import RPiNWR.SAME as SAME
 
 ###############################################################################
 # COMMANDS
@@ -375,10 +375,7 @@ class SameInterruptCheck(InterruptHandler):
                 radio.same_message = None
                 self.__get_status(radio, clearbuf=True)
             if len(message.headers) > 0:
-                if message.is_interpreted_cleanly():
-                    radio._fire_event(SAMEMessageReceivedEvent(message))
-                else:
-                    radio._fire_event(DirtySAMEMessageReceivedEvent(message))
+                radio._fire_event(SAMEMessageReceivedEvent(message))
 
         self.status = status = self.__get_status(radio, intack=self.intack, clearbuf=self.clearbuf)
         if self.intack:

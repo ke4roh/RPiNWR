@@ -170,7 +170,7 @@ class MessageCache(BaseComponent):
         # self.__messages contains EventMessageGroup objects which contain all the
         # messages for a particular storm (VTEC), so we pull off only the most recent
         # applicable message for this locascoretion and time, and return that
-        l = list([ScoredMessage(mx, self.message_scores.get(mx.get_event_type())) for mx in
+        l = list([ScoredMessage(mx, self.message_scores.get(mx.get_event_type(), 0)) for mx in
                   filter(
                       lambda m: m and event_pattern.match(m.get_event_type()),
                       [mg.is_effective(self.latlon, self.county_fips, here, self.__time)
@@ -285,7 +285,7 @@ class EventMessageGroup(object):
 class ScoredMessage(object):
     def __init__(self, msg, score):
         self._msg = msg
-        self._score = score
+        self._score = score + 0
 
     def score(self):
         return self._score

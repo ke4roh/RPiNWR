@@ -34,10 +34,11 @@ __author__ = 'ke4roh'
 
 
 class DummyLogger(object):
-    def __init__(self):
+    def __init__(self, clock=time.time):
         self.debug_history = []
         self.error_history = []
         self.debug_lock = threading.Condition()
+        self.time = clock
 
     def debug(self, s):
         with self.debug_lock:
@@ -60,15 +61,14 @@ class DummyLogger(object):
         except AttributeError:
             pattern = re.compile(pattern)
 
-        timeout = time.time() + timeout
+        timeout = self.time() + timeout
         while sum(pattern.match(x) is not None for x in self.debug_history) < n:
-            now = time.time()
+            now = self.time()
             if now > timeout:
                 raise TimeoutError()
             with self.debug_lock:
                 # Wait for the next message to come along
                 self.debug_lock.wait(timeout - now)
-
 
 class ScriptInjector(BaseComponent):
     def inject(self, script):
@@ -137,7 +137,72 @@ class TestIntegration(unittest.TestCase):
         # Start this test at the top of the hour, at least an hour before the current time
         # Top of the hour gives some repeatability.
         # It's based on the current time because otherwise the radio will infer the wrong year on message timestamps.
-        # TODO Design a better solution: Get year from context? Get time from context? Get time from radio?
+        t = int((time.time() - 60 * 60) / (60 * 60)) * 60 * 60
+        si4707args = "--hardware-context RPiNWR.sources.radio.Si4707.mock.MockContext --mute-after 0  --transmitter WXL58".split()
+        injector = ScriptInjector()
+        clock = MockClock(epoch=t)
+        self.box = box = Radio_Component(si4707args, clock=clock.time) + Radio_Squelch() + \
+                         TextPull(location=location, url='http://127.0.0.1:17/') + \
+                         AlertTimer(continuation_reminder_interval_sec=.05, clock=clock.time) + \
+                         MessageCache(location, clock=clock.time) + \
+                         Debugger(logger=logger) + injector
+
+        box.start()
+
+        logger.wait_for_n_events(1, re.compile('<started.*'), 5)
+
+        logger.wait_for_n_events(1, re.compile('<radio_status.*'), 5)
+
+        self.assertTrue(len(logger.debug_history) < 20, str(logger.debug_history))
+
+        # Send t-storm, see alert level go up
+        injector.inject("send -WXR-SVR-037183+0030-%s-KRAH/NWS-" % time.strftime('%j%H%M', time.gmtime(t)))
+        logger.wait_for_n_events(1, re.compile('<new_message[^\-]*-WXR-SVR-'), 5)
+        logger.wait_for_n_events(1, re.compile('<new_score\D+30'), 5)
+
+        # send TOR, see alert propagate because the net is (bogus)
+        t += 120
+        clock.set(t)
+        injector.inject("send -WXR-TOR-037183+0030-%s-KRAH/NWS-" % time.strftime('%j%H%M', time.gmtime(t)))
+        logger.wait_for_n_events(1, re.compile('<new_message[^\-]*-WXR-TOR-'), 5)
+        logger.wait_for_n_events(1, re.compile('<new_score\D+40'), .5)
+        logger.wait_for_n_events(1, re.compile('<begin_alert.*'), 2)
+
+        t += 60 * .5
+        clock.set(t)
+        logger.wait_for_n_events(1, re.compile('<continue_alert.*'), 2)
+
+        t += 60 * 45
+        clock.set(t)
+        logger.wait_for_n_events(1, re.compile('<all_clear.*'), 2)
+
+        self.assertEquals(0, len(logger.error_history), str(logger.error_history))
+        self.assertTrue(len(logger.debug_history) < 35, str(logger.debug_history))
+
+    def test_Si4707_to_alert_with_net_working(self):
+        # 1. Radio gets the alert first, then net 15 sec later
+        # 2. Net gets the alert first, then radio 15 sec later
+        # Storm system progresses from tornado watch to warning
+        # Polygon changes - the alerted area is outside, then inside, then outside again
+        # Cucumber example:
+        # Start a weather radio with net and radio at LAT, LON
+        # Issue a TOR on the radio
+        # Advance the clock 15 seconds
+        # Issue a TOR on the internet with this polygon
+        # Assert that the TOR is reflected in the alert timer
+        #
+        location = {
+            'lat': 35.77,
+            'lon': -78.64,
+            'fips6': '037183',
+            'warnzone': 'NCZ183',
+            'firewxzone': 'NCZ183'
+        }
+        logger = DummyLogger()
+
+        # Start this test at the top of the hour, at least an hour before the current time
+        # Top of the hour gives some repeatability.
+        # It's based on the current time because otherwise the radio will infer the wrong year on message timestamps.
         t = int((time.time() - 60 * 60) / (60 * 60)) * 60 * 60
         si4707args = "--hardware-context RPiNWR.sources.radio.Si4707.mock.MockContext --mute-after 0  --transmitter WXL58".split()
         injector = ScriptInjector()

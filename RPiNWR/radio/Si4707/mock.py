@@ -18,10 +18,10 @@ __author__ = 'ke4roh'
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from RPiNWR.sources.radio.Si4707 import Context, PROPERTIES, Property
+from RPiNWR.Si4707 import Context, PROPERTIES, Property
 import threading
 import time
-from RPiNWR.messages.SAME import SAME_PATTERN
+from RPiNWR.SAME import SAME_PATTERN
 import struct
 import logging
 import re
@@ -246,7 +246,7 @@ class MockContext(Context):
         # There is some parameter checking here because it is much easier to diagnose here than in a separate thread.
         # TODO Add noise commensurate with SNR and RSSI by default
         if not invalid_message and not SAME_PATTERN.match(message):
-            raise ValueError(message)
+            raise ValueError()
         for num in [tone, noise, header_count, voice_duration, eom]:
             if num is not None:  # None should be fine for these things
                 num + 1  # This will give a ValueError if it's not a number

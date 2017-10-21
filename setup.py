@@ -33,6 +33,6 @@ setup(
     # ],
     install_requires=['urllib3', 'shapely', 'iso8601', 'circuits', 'lxml', 'python-dateutil', 'watchdog', 'pygame'],
     setup_requires=['pytest-runner'],
-    tests_require=['pytest'],
+    tests_require=['pytest', 'behave', 'jinja2'],
     test_suite="tests",
 )

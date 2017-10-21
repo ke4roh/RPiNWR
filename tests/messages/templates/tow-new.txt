@@ -1,0 +1,59 @@
+427
+WFUS52 KRAH 012158
+TORRAH
+NCC085-012245-
+/O.NEW.KRAH.TO.W.{{ vtec_serial|default('0018') }}.{{ vtec_ts(start) }}Z-{{ vtec_ts(end) }}Z/
+
+BULLETIN - EAS ACTIVATION REQUESTED
+Tornado Warning
+National Weather Service Raleigh NC
+{{ header_time(start) }}
+
+The National Weather Service in Raleigh has issued a
+
+* Tornado Warning for...
+  Harnett County in central North Carolina...
+
+* Until 645 PM EDT
+
+* At 558 PM EDT, a severe thunderstorm capable of producing a tornado
+  was located 10 miles northwest of Pope AFB, or 12 miles northwest
+  of Fort Bragg, moving east at 45 mph.
+
+  HAZARD...Tornado.
+
+  SOURCE...Radar indicated rotation.
+
+  IMPACT...Flying debris will be dangerous to those caught without
+           shelter. Mobile homes will be damaged or destroyed.
+           Damage to roofs, windows, and vehicles will occur.  Tree
+           damage is likely.
+
+* Locations impacted include...
+  Lillington, Dunn, Angier, Erwin, Coats, Pineview, Anderson Creek,
+  Timberlake, Raven Rock State Park and Buies Creek.
+
+PRECAUTIONARY/PREPAREDNESS ACTIONS...
+
+TAKE COVER NOW! Move to a basement or an interior room on the lowest
+floor of a sturdy building. Avoid windows. If you are outdoors, in a
+mobile home, or in a vehicle, move to the closest substantial shelter
+and protect yourself from flying debris.
+
+To report severe weather contact your nearest law enforcement agency.
+They will send your report to the National Weather Service office in
+Raleigh.
+
+&&
+
+LAT...LON {{ flat_poly(polygon)|default('3521 7913 3525 7916 3532 7917 3536 7913
+      3553 7877 3541 7863 3526 7864 3526 7880
+      3521 7898 3521 7903 3519 7910') }}
+TIME...MOT...LOC 2158Z 251DEG 39KT 3529 7910
+
+TORNADO...RADAR INDICATED
+HAIL...<.75IN
+
+$$
+
+GIH

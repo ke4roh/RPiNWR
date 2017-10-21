@@ -17,21 +17,79 @@ __author__ = 'ke4roh'
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import time
 import unittest
+from heapq import heapify, heappop, heappush
+from threading import Thread, Condition
+
+
+class ClockStoppedError(ValueError):
+    pass
 
 
 class MockClock(object):
     def __init__(self, speedup=10, epoch=None):
         self.epoch = None
         self.start = None
+        self.stopped = False
         self.speedup = speedup
         self.set((epoch is None and time.time()) or epoch)
+        self.pending_jobs = []
+        self.__job_pending = Condition()
+        Thread(target=self.__job_handler, daemon=True).start()
+
+    def __job_handler(self):
+        while True:
+            while len(self.pending_jobs) and \
+                            self.time() >= self.pending_jobs[0][0]:
+                with self.__job_pending:
+                    t, func = heappop(self.pending_jobs)
+                func()
+            with self.__job_pending:
+                next_job_time = (len(self.pending_jobs) and
+                                 self.pending_jobs[0][0]) or 525000 * 60
+                self.__job_pending.wait(next_job_time - self.time())
 
     def time(self):
+        if self.stopped:
+            raise ClockStoppedError()
         return self.epoch + (time.time() - self.start) * self.speedup
 
     def set(self, new_epoch):
+        if self.stopped:
+            raise ClockStoppedError()
         self.start = time.time()
         self.epoch = new_epoch
+
+    def after(self, delay_sec, f):
+        if self.stopped:
+            raise ClockStoppedError()
+        self.at(self.time() + delay_sec, f)
+
+    def at(self, when, f):
+        """
+
+        :param when: when you want something to happen
+        :param f: what you want to happen
+        :return:
+        """
+        if self.stopped:
+            raise ClockStoppedError()
+        with self.__job_pending:
+            heappush(self.pending_jobs, (when, f))
+            self.__job_pending.notify_all()
+
+    def sleep(self, duration):
+        lock = Condition()
+
+        def awaken():
+            with lock:
+                lock.notify_all()
+
+        with lock:
+            self.after(duration, awaken)
+            lock.wait()
+
+    def stop(self):
+        self.stopped = True
 
 
 class TestMockClock(unittest.TestCase):

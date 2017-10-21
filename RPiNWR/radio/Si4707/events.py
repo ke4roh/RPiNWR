@@ -40,12 +40,6 @@ class SAMEEvent(Si4707Event):
     pass
 
 
-class DirtySAMEMessageReceivedEvent(SAMEEvent):
-    def __init__(self, same_message):
-        super(DirtySAMEMessageReceivedEvent, self).__init__()
-        self.message = same_message
-
-
 class SAMEMessageReceivedEvent(SAMEEvent):
     def __init__(self, same_message):
         super(SAMEMessageReceivedEvent, self).__init__()

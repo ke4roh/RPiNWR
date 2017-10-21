@@ -34,13 +34,13 @@ from circuits.web.client import Client, request
 from urllib.parse import urlencode
 from ..messages.NWSText import NWSText, FIPS_STATE
 from ..sources.radio.radio_squelch import EscrowAction
+import logging
 
 class poll(Event):
     """This fires every time it's time to fetch data, but handlers must not block."""
 
 
-# TODO update polling interval depending on weather
-
+_logger = logging.getLogger("RPiNWR.text_pull")
 
 class TextPull(AlertSource):
     channel = "TextPull"
@@ -69,7 +69,7 @@ class TextPull(AlertSource):
             if 'fips6' in loc:
                 del loc['fips6']
 
-            self.timer = Timer(interval=60,
+            self.timer = Timer(interval=2,
                                event=request("GET", self.url + 'showsigwx.php?' + urlencode(loc),
                                              headers={'Accept': '*/*', 'User-Agent': 'RPiNWR/0.0.1'}),
                                persist=True, channel=self.channel)
@@ -116,7 +116,7 @@ class TextPull(AlertSource):
             self._fire_status(net_status.ok)
         else:
             self._fire_status(net_status.down)
-            # TODO log it
+            logging.warning("Text_pull response %s, %s" % (response.status, response.reason))
             raise Exception("{0:d} {1:s}".format(response.status, response.reason))
 
     def _fire_status(self, status):

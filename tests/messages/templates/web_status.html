@@ -1,0 +1,80 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head>
+    <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1" />
+    <title>National Weather Service Watch Warning Advisory Summary</title>
+    <meta name="title" content="National Weather Service Watch Warning Advisory Summary" />
+    <meta name="description" content="The National Weather Service is your best source for complete weather forecast and weather related information on the web!" />
+    <meta name="keywords" content="weather, local weather forecast, local forecast, weather forecasts, local weather, radar, fire weather, center weather service units, JetStream" />
+    <meta name="rating" content="General" />
+    <meta name="DC.publisher" content="NWS Southern Region HQ Fort Worth, Texas" />
+    <meta name="DC.contributor" content="NWS Southern Region HQ Fort Worth, Texas" />
+    <meta name="DC.rights" content="http://www.weather.gov/disclaimer.php" />
+    <meta name="DC.author" content="NWS Southern Region HQ Fort Worth, Texas (Dennis Cain and Leon Minton)" />
+    <meta name="robots" content="index,follow" />
+    <link rel="STYLESHEET" type="text/css" href="http://radar.weather.gov/main_041007.css" title="nws" />
+    <link rel="STYLESHEET" type="text/css" href="http://radar.weather.gov/print_041007.css" title="nws" media="print" />
+    <link href="/images/favicon.ico" rel="shortcut icon" />
+
+</head>
+<body class="nonav670">
+<div class="header670">
+    <div class="rightalign"><a href="http://weather.gov" class="noprint" title="Go to the NWS Homepage">weather.gov</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</div>
+    <span class="title_small">National Weather Service</span><br /><br />
+    <span class="title_large">Watches, Warnings &amp; Advisories</span>
+</div>
+<div id="noaalink"><a href="http://www.noaa.gov"><img src="/images/wtf/noaalink.gif" alt="Go to the NOAA Homepage" width="80" height="80" /></a></div>
+<div id="nwslink670"><a href="http://www.nws.noaa.gov"><img src="/images/wtf/noaalink.gif" alt="NWS Homepage" width="80" height="80" /></a></div>
+<div id="topnav670">
+    <label for="zipcity" class="yellow">Local weather forecast by &quot;City, St&quot; or zip code</label>
+    <form method="post" action="/zipcity.php">
+        <div class="searchinput">
+            <input type="text" id="zipcity" name="inputstring" size="10" value="City, St" onfocus="if(this.value=='City, St')this.value='';" />
+            <input type="submit" name="Go2" value="Go" />
+        </div>
+    </form>
+</div>
+
+<!-- main content -->
+
+<div id="mainnonav670" style="position:relative !important; top:0px !important;">	<div id="content"><br />6 products issued by NWS for: 6    <!-- AddThis Button BEGIN -->
+    <div class="addthis_toolbox addthis_default_style " style="float:right;">
+        <a href="http://www.addthis.com/bookmark.php?v=250&amp;pubid=ra-5127a6364d551d04" class="addthis_button_compact">Share</a>
+        <span class="addthis_separator">|</span>
+        <a class="addthis_button_preferred_1"></a>
+        <a class="addthis_button_preferred_2"></a>
+        <a class="addthis_button_preferred_3"></a>
+        <a class="addthis_button_preferred_4"></a>
+        <a class="addthis_button_preferred_5"></a>
+    </div>
+    <script type="text/javascript">var addthis_config = {"data_track_addressbar":true};</script>
+    <script type="text/javascript" src="http://s7.addthis.com/js/300/addthis_widget.js#pubid=ra-5127a6364d551d04"></script>
+    <!-- AddThis Button END -->{% for msg in messages %}<hr /><br /><h3>{{ msg.title }}</h3><pre>
+    {{ msg.body }}
+{% endfor %}
+</pre><hr/><br/></div></div>
+<div id="footer670">
+    <div id="footer670td2">
+        U.S. Dept. of Commerce<br />
+        NOAA National Weather Service<br />
+        1325 East West Highway<br />
+        Silver Spring, MD 20910<br />
+        E-mail: <a href="mailto:w-nws.webmaster@noaa.gov">w-nws.webmaster@noaa.gov</a><br />
+        Page last modified: May 16, 2007
+    </div>
+    <div id="footer670td3"><input type="button" value="Back to previous page" onclick="history.back()" /></div>
+    <div id="footer670td4">
+        <ul>
+            <li><a href="http://www.weather.gov/disclaimer.php">Disclaimer</a></li>
+            <li><a href="http://www.weather.gov/credits.php">Credits</a></li>
+            <li><a href="http://www.weather.gov/glossary/">Glossary</a></li>
+            <li><a href="http://weather.gov/privacy.php">Privacy Policy</a></li>
+            <li><a href="http://www.weather.gov/admin.php">About Us</a></li>
+            <li><a href="http://www.weather.gov/careers.php">Career Opportunities</a></li>
+        </ul>
+    </div>
+    <div id="tag670">NATIONAL WEATHER SERVICE: <span class="italic">for Safety, for Work, for Fun</span> - FOR LIFE</div>
+</div>
+
+</body>
+</html>
+

@@ -57,7 +57,7 @@ class Watcher(Component):
 
         with self.__cv:
             while time.time() < toolate and len(ll()) < n:
-                self.__cv.wait()
+                self.__cv.wait(toolate-time.time())
         if time.time() >= toolate:
             raise TimeoutError("n = %d\n" % len(lll) + "\n".join([str(e) for e in self.events]))
         return lll
