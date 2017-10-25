@@ -429,7 +429,7 @@ class MessageChunk:
     # TODO: fix this so it matches up with the '+' correctly (index 20)
         elif 18 <= byte_confidence_index <= 24:
             self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, valid_times)
-            potential_byte_confidence_index_offset += 5
+            potential_byte_confidence_index_offset += 8
 
     # Reconcile the end
         elif 25 <= byte_confidence_index <= 29:
@@ -503,7 +503,7 @@ class MessageChunk:
 
     '''
     [
-    '-', 'ECWP', 'AIXE', 'SVRP', '-', __ALPHA, __ALPHA, __ALPHA, '-',
+    '-', 'ECWP', 'AIXE', 'SVRP', '-', __ALPHA, __ALPHA, __ALPHA, '-', ***HERE***
     __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, -7,
     '+', __NUMERIC, __NUMERIC, '0134', '05', '-',
     '0123', __NUMERIC, __NUMERIC, '012', __NUMERIC, '012345', __NUMERIC, '-',
@@ -647,9 +647,10 @@ def average_message(headers, transmitter):
         valid_code = check_if_valid_code([code[0][i][1:] for code in headers], valid_code_list)
         # if it's valid, add it to our final message
         if valid_code:
-            avgmsg += valid_code
+            avgmsg += headers[i][0][i]
             for i in range(0, len(valid_code)):
                 confidences.append(9)
+                byte_pattern_index += 1
             valid_code = None
             continue
             # if it's not valid, we have to approximate
