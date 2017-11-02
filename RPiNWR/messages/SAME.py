@@ -213,7 +213,6 @@ def _reconcile_word(msg, confidences, start, choices):
         # Update the confidence
         base_confidence = max(0, int(max(4, max(confidences[start:end])) - candidates[0][0] / (end - start)))
         for i in range(start, end):
-            # TODO: this needs to be limited to a max of 9
             if msg[i] != word[i - start]:
                 confidences[i] = base_confidence
             else:
@@ -662,6 +661,7 @@ def average_message(headers, transmitter):
             msg_con = list(zip([c[0][i] for c in headers], [c[1][i] for c in headers]))
             # ['WXR', 'WXX', 'WXR']
             msgs = [c[0] for c in msg_con]
+            print(msgs)
             # [[3, 3, 3,], [3, 3, 3], [3, 2, 3]]
             cons = [c[1] for c in msg_con]
             chunk = MessageChunk(msgs, cons, byte_pattern_index, transmitter, fips_counter, valid_times)
