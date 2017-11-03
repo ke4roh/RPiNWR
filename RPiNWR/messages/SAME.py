@@ -174,9 +174,9 @@ def __median(lst):
     return float(sum(sorted(lst)[quotient - 1:quotient + 1]) / 2)
 
 
-def _reconcile_word(msg, confidences, start, choices):
+def _reconcile_word(word, confidences, start, choices):
     """
-    :param msg: the whole message
+    :param word: the message chunk
     :param confidences: confidences for each character in the message
     :param start: the index at which to look for the choices
     :param choices: a list of choices that might appear at the given index, or tuples of weight and choice
@@ -186,9 +186,9 @@ def _reconcile_word(msg, confidences, start, choices):
     """
     if not len(choices):
         # If there are no choices, status-quo is best we can do
-        return msg, confidences, False
-    if len(msg) <= start:
-        return msg, confidences, False
+        return word, confidences, False
+    if len(word) <= start:
+        return word, confidences, False
 
     matched = False
     try:
@@ -201,7 +201,7 @@ def _reconcile_word(msg, confidences, start, choices):
         choices = list([(1, x) for x in choices])
 
     end = start + len(choices[0][1])
-    word = msg[start:end]
+    word = word[start:end]
     confidence = confidences[start:end]
     candidates = []
     for weight, c in choices:
@@ -213,17 +213,17 @@ def _reconcile_word(msg, confidences, start, choices):
         # Update the confidence
         base_confidence = max(0, int(max(4, max(confidences[start:end])) - candidates[0][0] / (end - start)))
         for i in range(start, end):
-            if msg[i] != word[i - start]:
+            if word[i] != word[i - start]:
                 confidences[i] = base_confidence
             else:
                 # added to ensure that we don't get confidences over 9
                 confidences[i] = min(9, base_confidence >> 3)
         # replace the word
-        l = list(msg)
+        l = list(word)
         l[start:end] = list(word)
-        msg = "".join(l)
+        word = "".join(l)
         matched = True
-    return msg, confidences, matched
+    return word, confidences, matched
 
 _END_SEQUENCE = "+0___-_______-____/NWS-"
 
@@ -349,7 +349,6 @@ def split_message(message, confidences):
             final_confidences.append(con_set)
         # empty out con_set
         con_set = []
-
     return [final_message, final_confidences, fips_counter]
 
 
@@ -610,7 +609,6 @@ def average_message(headers, transmitter):
     valid_code_list = [_DURATION_NUMBERS, _EVENT_CODES, _ORIGINATOR_CODES, valid_times, tuple([x[1] for x in _EVENT_TYPES]), wfo]
     valid_code_list = [x for x in valid_code_list for x in x]
 
-    # TODO: change this so it checks each part of the message separately
     # First, break up the message into its component parts
     for i in headers:
         msg = i[0]
@@ -639,8 +637,6 @@ def average_message(headers, transmitter):
     for i in range(0, len(headers[0][0])):
         # Check if we have valid codes already
         # TODO: improve this so it doesn't check every code against every part of the message (use dict?)
-        # TODO: we have to rework this so it also increments the byte counter
-        # check against each valid code list
         # [WXR, WAR, WRR]
         # we need to slice off the delimiters before we check for valid codes
         valid_code = check_if_valid_code([code[0][i][1:] for code in headers], valid_code_list)
