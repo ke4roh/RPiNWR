@@ -23,6 +23,7 @@ import logging
 import threading
 import functools
 import calendar
+from operator import add
 from .CommonMessage import CommonMessage
 from ..sources.radio.nwr_data import get_counties, get_wfo
 
@@ -104,8 +105,77 @@ VALID_DURATIONS = (
 
 _DURATION_NUMBERS = tuple([x[1] for x in VALID_DURATIONS])
 
+
 # takes a list of codes and a list of valid codes, and checks to make sure all of the codes correspond to a valid list
 # e.g. if we have a list of ['WXR', 'WXR', 'WXR'] we should get the result that this is a valid originator code
+
+class ConfidentCharacter(object):
+    """
+    R: Know the character (or lack thereof)
+    R: know the bitwise confidence
+    R: produce a byte-wise confidence int(sum(bitwise)/8)
+    C: combine to make string w/confidence “+”
+    C: combine to make a single character “&” (honor the bit values having more confidence, the confidence is winning-losing confidence)
+
+    """
+
+    def __init__(self, char, confidence=None, bitwise_confidence=None):
+        """
+        :param char: the character to represent (as a character)
+        :param confidence: integer indicating confidence for the whole byte
+           (only one of confidence or bitwise_confidence)
+        :param bitwise_confidence: 8 element array of confidence for each bit (0=lsb)
+           (only one of confidence or bitwise_confidence)
+        """
+        self.char = char
+        if confidence is None:
+            if len(bitwise_confidence) != 8:
+                raise ValueError("Confidence must be an array, length 8, of integers")
+            self.bitwise_confidence = bitwise_confidence
+            self.confidence = sum(bitwise_confidence) >> 3
+        else:
+            if bitwise_confidence is not None:
+                raise ValueError("Only one of bitwise_confidence and confidence can be specified")
+            self.confidence = confidence
+            self.bitwise_confidence = [confidence] * 8
+
+    def __repr__(self):
+        return '<ConfidentCharacter \'%s\' %s>' % (self.char, str(self.bitwise_confidence))
+
+    def __add__(self, other):
+        bits_true, bits_false = self.get_bit_confidences()
+        other_bits_true, other_bits_false = other.get_bit_confidences()
+        new_bits_true = list(map(add, bits_true, other_bits_true))
+        new_bits_false = list(map(add, bits_false, other_bits_false))
+        new_bitwise_confidence = [0] * 8
+        new_byte = 0x00
+        for i in range(0, 8):
+            how_true = new_bits_true[i] - new_bits_false[i]
+            if how_true > 0:
+                new_byte |= 1 << i
+                new_bitwise_confidence[i] = how_true
+            else:
+                new_bitwise_confidence[i] = -how_true
+
+        return ConfidentCharacter(chr(new_byte), bitwise_confidence=new_bitwise_confidence)
+
+    def __eq__(self, other):
+        if isinstance(self, other.__class__):
+            return self.__dict__ == other.__dict__
+        return False
+
+    def get_bit_confidences(self):
+        """Compute the confidence for each bit being true or false"""
+        bits_true = [0] * 8
+        bits_false = [0] * 8
+        for k in range(0, 8):
+            # if the last bit (e.g. 00001) is a 1:
+            if (ord(self.char) >> k) & 1:
+                # then add it to the bitstrue (or bitsfalse) bits with that bit's confidence level
+                bits_true[k] += 1 * self.bitwise_confidence[k]
+            else:
+                bits_false[k] += 1 * self.bitwise_confidence[k]
+        return bits_true, bits_false
 
 
 def check_if_valid_code(codes, valid_list):
@@ -137,6 +207,7 @@ def _reconcile_character(bitstrue, bitsfalse, pattern):
     else:
         confidence = 1
     return confidence, near[0][1]
+
 
 # CLEAN: -WXR-TOR-039173-039051-139069+0030-1591829-KCLE/NWS
 # DIRTY: -WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀḖḀỻờ~ỿ
@@ -225,6 +296,7 @@ def _reconcile_word(word, confidences, start, choices):
         matched = True
     return word, confidences, matched
 
+
 _END_SEQUENCE = "+0___-_______-____/NWS-"
 
 
@@ -283,7 +355,6 @@ def _truncate(avgmsg, confidences):
 
 # TODO: split the end of the message (KCLE/NWS) into separate parts
 def split_message(message, confidences):
-
     # first, truncate the message and separate message and confidences
     truncated_message = _truncate(message, confidences)
     # this is a stopgap fix to account for passing in a list from _truncate()
@@ -296,7 +367,7 @@ def split_message(message, confidences):
     # _truncate will always give us a message with 22 chars after the delimiter, therefore we want the character
     # right before that set of chars (i.e. the delimiter itself)
 
-    main_delimiter = message[len(message)-23]
+    main_delimiter = message[len(message) - 23]
     final_message = []
     final_confidences = []
     # counts number of county codes, we need to return this for later use in avgmsg()
@@ -418,18 +489,18 @@ class MessageChunk:
                 fips_counter -= 1
             potential_byte_confidence_index_offset += 7
 
-    # Reconcile purge time
+            # Reconcile purge time
         elif 13 <= byte_confidence_index <= 17:
             self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, VALID_DURATIONS)
             potential_byte_confidence_index_offset += 4
 
-    # Reconcile issue time
-    # TODO: fix this so it matches up with the '+' correctly (index 20)
+            # Reconcile issue time
+            # TODO: fix this so it matches up with the '+' correctly (index 20)
         elif 18 <= byte_confidence_index <= 24:
             self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, valid_times)
             potential_byte_confidence_index_offset += 8
 
-    # Reconcile the end
+            # Reconcile the end
         elif 25 <= byte_confidence_index <= 29:
             self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, wfo)
             potential_byte_confidence_index_offset += 5
@@ -438,10 +509,12 @@ class MessageChunk:
             self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, ['NWS'])
             potential_byte_confidence_index_offset += 5
 
-    # After cleaning up by word, we clean up by char if we had to change more than one byte
+            # After cleaning up by word, we clean up by char if we had to change more than one byte
         if not matched:
             self.chars, self.confidences, self.byte_confidence_index = self.approximate_chars(self.chars,
-                                                self.confidences, bitstrue, bitsfalse, self.byte_confidence_index)
+                                                                                              self.confidences,
+                                                                                              bitstrue, bitsfalse,
+                                                                                              self.byte_confidence_index)
         else:
             self.byte_confidence_index += potential_byte_confidence_index_offset
 
@@ -483,7 +556,7 @@ class MessageChunk:
     @staticmethod
     def assemble_chars(bitstrue, bitsfalse):
         # the resultant averaged group of chars we get from the bits
-        avgchars= []
+        avgchars = []
         confidences = [0] * (len(bitstrue) >> 3)
         # bitwise shift over 3 to keep int (divide by 8)
         for i in range(0, len(bitstrue) >> 3):
@@ -520,7 +593,7 @@ class MessageChunk:
             # chunk, confidences, matched = _reconcile_word(chunk, confidences, ix - 1, ['-'])
             chunk, confidences, matched = _reconcile_word(chunk, confidences, ix,
                                                           [(1.1, '0'), (1, '1'), (1, '2'), (1, '3'), (1, '4'),
-                                                            (1, '5'), (1, '6'), (1, '7'), (1, '8'), (1, '9')])
+                                                           (1, '5'), (1, '6'), (1, '7'), (1, '8'), (1, '9')])
             chunk, confidences, matched = _reconcile_word(chunk, confidences, ix + 1,
                                                           [x[-5:] for x in candidate_fips])
             matched1 |= matched
@@ -606,7 +679,8 @@ def average_message(headers, transmitter):
     except KeyError:
         wfo = []
 
-    valid_code_list = [_DURATION_NUMBERS, _EVENT_CODES, _ORIGINATOR_CODES, valid_times, tuple([x[1] for x in _EVENT_TYPES]), wfo]
+    valid_code_list = [_DURATION_NUMBERS, _EVENT_CODES, _ORIGINATOR_CODES, valid_times,
+                       tuple([x[1] for x in _EVENT_TYPES]), wfo]
     valid_code_list = [x for x in valid_code_list for x in x]
 
     # First, break up the message into its component parts
@@ -671,6 +745,7 @@ def average_message(headers, transmitter):
 
     print(confidences)
     return unicodify(avgmsg), confidences[0:len(avgmsg)]
+
 
 # -WXR-TOR-039173-039051-139069+0030-1591829-KCLE/NWS
 SAME_PATTERN = re.compile('-(EAS|CIV|WXR|PEP)-([A-Z]{3})((?:-\\d{6})+)\\+(\\d{4})-(\\d{7})-([A-Z/]+)-?')
@@ -877,14 +952,15 @@ def default_prioritization(event_type):
     else:
         return logging.INFO
 
+
 def default_SAME_sort(a, b):
     apri = default_prioritization(a.get_event_type())
     bpri = default_prioritization(b.get_event_type())
-    delta = bpri - apri # highest first
+    delta = bpri - apri  # highest first
     if delta:
         return delta
 
-    delta = b.get_start_time_sec() - a.get_start_time_sec() # newest first
+    delta = b.get_start_time_sec() - a.get_start_time_sec()  # newest first
     if delta:
         return delta
 
@@ -900,6 +976,7 @@ def default_SAME_sort(a, b):
 
     return 0
 
+
 class SAMECache(object):
     """
     SAMECache holds a collection of (presumably recent) SAME messages.
@@ -914,6 +991,7 @@ class SAMECache(object):
     Si4707 to populate via SAME message events
     A consumer, to monitor the messages and clear out inactive messages
     """
+
     # TODO track the time since last received message for my fips, alert if >8 days
     # TODO monitor RSSI & SNR and alert if out of spec (what is spec)?
     def __init__(self, county_fips, same_sort=default_SAME_sort):

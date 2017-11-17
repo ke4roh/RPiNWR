@@ -28,6 +28,25 @@ from calendar import timegm
 import os
 import string
 
+
+class TestConfidentCharacter(unittest.TestCase):
+    def testAddingConfidence(self):
+        c1 = ConfidentCharacter('W', 3)
+        self.assertEqual('W', c1.char)
+        self.assertEqual(3, c1.confidence)
+        self.assertEqual([3] * 8, c1.bitwise_confidence)
+
+        c2 = ConfidentCharacter('W', 3)
+        self.assertEqual(c1, c2)
+        self.assertEqual(ConfidentCharacter('W', 6), c1 + c2)
+
+        c3 = ConfidentCharacter('V', 3)
+        self.assertEqual(ConfidentCharacter('W', bitwise_confidence=[3, 9, 9, 9, 9, 9, 9, 9]), c1 + c2 + c3)
+
+        c4 = ConfidentCharacter(chr(0), 0)
+        self.assertEqual(c1, c1 + c4)
+
+
 class TestSAME(unittest.TestCase):
     @staticmethod
     def get_time(msg, year=2011):
@@ -119,7 +138,7 @@ class TestSAME(unittest.TestCase):
 
     def testAverageMessage(self):
         clear_message, messages = self.make_noisy_messages(.03)
-        (msg, confidence) = average_message(messages, "KID77")
+        msg, confidence = average_message(messages, "KID77")
         self.assertEqual(clear_message, msg)
         self.assertEqual(3, min(confidence))
         self.assertEqual(9, max(confidence))
@@ -244,11 +263,13 @@ class TestSAME(unittest.TestCase):
             msg["calculated"] = (msg["calculated"][0], "".join([str(x) for x in msg["calculated"][1]]))
 
         # added utf-8 encoding for Windows machines
-        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "dirty_messages_1.json"), "w", encoding="utf-8") as f:
+        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "dirty_messages_1.json"), "w",
+                  encoding="utf-8") as f:
             json.dump(messages, f, indent=4, sort_keys=True, ensure_ascii=False)
 
     def load_dirty_messages(self):
-        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "dirty_messages.json"), "r", encoding="utf-8") as f:
+        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "dirty_messages.json"), "r",
+                  encoding="utf-8") as f:
             messages = json.load(f)
         return messages
 
@@ -488,9 +509,9 @@ class TestSAME(unittest.TestCase):
 
         # setup
         input_msg = '-WXR-SVR-037085-037101+0100-1250218-KRAH/NWS-'
-        input_confidences = [0]*len(input_msg)
+        input_confidences = [0] * len(input_msg)
         input_msg_2 = '-WXR-RWT-020103-020209-020091-°20121-029047-029165%029095-029037;0030-3031710,KEAX\\\'ÎWS-'
-        input_confidences_2 = [0]*len(input_msg_2)
+        input_confidences_2 = [0] * len(input_msg_2)
 
         # expected values
         expected_result = [['-WXR', '-SVR', '-037085', '-037101', '+0100', '-1250218', '-KRAH/NWS-'],
@@ -514,14 +535,14 @@ class TestSAME(unittest.TestCase):
     def test_MessageChunk(self):
 
         test_headers = [['-WḀR-SVR-0Ḁ7183-0Ḁ7182+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀ6ḀỿỨỼỿ',
-          '33333333333333333333333333333323333333333000000',
-          1462219406.538715],
-         ['-WḀR-SVR-0Ḁ7183-0Ḁ7182+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀjḀẻẜẓỿ',
-          '33333333333333333333333333333333333333333000000',
-          1462219408.5504122],
-         ['-WḀR-SVR-0Ḁ7183-0Ḁ7182+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀḖḀỻờ~ỿ',
-          '33333323333333333333333333333333333333333000000',
-          1462219410.5092943]]
+                         '33333333333333333333333333333323333333333000000',
+                         1462219406.538715],
+                        ['-WḀR-SVR-0Ḁ7183-0Ḁ7182+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀjḀẻẜẓỿ',
+                         '33333333333333333333333333333333333333333000000',
+                         1462219408.5504122],
+                        ['-WḀR-SVR-0Ḁ7183-0Ḁ7182+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀḖḀỻờ~ỿ',
+                         '33333323333333333333333333333333333333333000000',
+                         1462219410.5092943]]
 
         split_headers = []
         for msg, conf, ts in test_headers:
@@ -625,7 +646,6 @@ class TestSAME(unittest.TestCase):
         long_msg = '-GYR-RWT-02010³-021209-020891-°20121-029047-129165%029095-02¹037;00-031710,KE@X\'ÎWS-asdada2983918**!@*#@&%#$&%#*asddddddddddddJJJJJJJJJJJJJJJJJJ'
         test_msg_long = self.add_noise(long_msg, 0)
 
-
         # TEST LIST
         test_list = ['-WXR-RwVm03090;-0202p1-020091-02012\x11-02= <3-\x1029145-02)195-029037+0030-;0³170p-OGAX/FWS-',
                      "-GYR-RWT-02010³-021209-020891-°20121-029047-129165%029095-02¹037;\x100\x130-\x13031710,KE@X'ÎWS-",
@@ -671,4 +691,3 @@ class TestSAME(unittest.TestCase):
         # test length
         self.assertTrue(len(test_truncate_short[0]) == 37)
         self.assertEqual(''.join(test_truncate_short[0]), expected_message_short)
-
