@@ -23,7 +23,7 @@ import logging
 import threading
 import functools
 import calendar
-from operator import add
+import operator
 from .CommonMessage import CommonMessage
 from ..sources.radio.nwr_data import get_counties, get_wfo
 
@@ -142,22 +142,22 @@ class ConfidentCharacter(object):
     def __repr__(self):
         return '<ConfidentCharacter \'%s\' %s>' % (self.char, str(self.bitwise_confidence))
 
-    def __add__(self, other):
-        bits_true, bits_false = self.get_bit_confidences()
-        other_bits_true, other_bits_false = other.get_bit_confidences()
-        new_bits_true = list(map(add, bits_true, other_bits_true))
-        new_bits_false = list(map(add, bits_false, other_bits_false))
-        new_bitwise_confidence = [0] * 8
+    def __and__(self, other):
+        how_true = self.get_bit_confidences()
+        other_how_true = other.get_bit_confidences()
+        new_how_true = list(map(operator.add, how_true, other_how_true))
         new_byte = 0x00
         for i in range(0, 8):
-            how_true = new_bits_true[i] - new_bits_false[i]
-            if how_true > 0:
+            if new_how_true[i] > 0:
                 new_byte |= 1 << i
-                new_bitwise_confidence[i] = how_true
-            else:
-                new_bitwise_confidence[i] = -how_true
 
-        return ConfidentCharacter(chr(new_byte), bitwise_confidence=new_bitwise_confidence)
+        return ConfidentCharacter(chr(new_byte), bitwise_confidence=list(map(operator.abs, new_how_true)))
+
+    def __add__(self, other):
+        if isinstance(self, other.__class__):
+            return ConfidentString([self, other])
+        else:
+            raise ValueError()
 
     def __eq__(self, other):
         if isinstance(self, other.__class__):
@@ -166,16 +166,51 @@ class ConfidentCharacter(object):
 
     def get_bit_confidences(self):
         """Compute the confidence for each bit being true or false"""
-        bits_true = [0] * 8
-        bits_false = [0] * 8
+        how_true = [0] * 8
         for k in range(0, 8):
             # if the last bit (e.g. 00001) is a 1:
             if (ord(self.char) >> k) & 1:
                 # then add it to the bitstrue (or bitsfalse) bits with that bit's confidence level
-                bits_true[k] += 1 * self.bitwise_confidence[k]
+                how_true[k] += 1 * self.bitwise_confidence[k]
             else:
-                bits_false[k] += 1 * self.bitwise_confidence[k]
-        return bits_true, bits_false
+                how_true[k] -= 1 * self.bitwise_confidence[k]
+        return how_true
+
+
+class ConfidentString(object):
+    """
+    String w/confidence
+    R: Compute confidence for the string
+    C: Combine with a regular string to produce another String w/confidence, reducing confidence for bytes changed
+    C: Concatenate to another string w/confidence “+”
+    C: Concatenate a character with “+”
+    R: Know characters (in order)
+    """
+
+    def __init__(self, data=None):
+        if data is None:
+            data = []
+        if not all(isinstance(x, ConfidentCharacter) for x in data):
+            raise ValueError("Only ConfidentCharacters can be in data")
+        self.data = data
+
+    def __add__(self, other):
+        if isinstance(self, other.__class__):
+            new_data = list(self.data)
+            new_data.extend(other.data)
+            return ConfidentString(new_data)
+        elif isinstance(other, ConfidentCharacter):
+            new_data = list(self.data)
+            new_data.append(other)
+            return ConfidentString(new_data)
+        else:
+            raise ValueError(other.__class__)
+
+    def __str__(self):
+        s = ""
+        for c in self.data:
+            s += c.char
+        return s
 
 
 def check_if_valid_code(codes, valid_list):

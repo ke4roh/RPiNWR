@@ -38,13 +38,24 @@ class TestConfidentCharacter(unittest.TestCase):
 
         c2 = ConfidentCharacter('W', 3)
         self.assertEqual(c1, c2)
-        self.assertEqual(ConfidentCharacter('W', 6), c1 + c2)
+        self.assertEqual(ConfidentCharacter('W', 6), c1 & c2)
 
         c3 = ConfidentCharacter('V', 3)
-        self.assertEqual(ConfidentCharacter('W', bitwise_confidence=[3, 9, 9, 9, 9, 9, 9, 9]), c1 + c2 + c3)
+        self.assertEqual(ConfidentCharacter('W', bitwise_confidence=[3, 9, 9, 9, 9, 9, 9, 9]), c1 & c2 & c3)
 
         c4 = ConfidentCharacter(chr(0), 0)
-        self.assertEqual(c1, c1 + c4)
+        self.assertEqual(c1, c1 & c4)
+
+
+class TestConfidentString(unittest.TestCase):
+    def testConcatenating(self):
+        cs = ConfidentString()
+        w = ConfidentCharacter('W', 3)
+        self.assertEqual("W", str(cs + w))
+
+        x = ConfidentCharacter('X', 3)
+        r = ConfidentCharacter('R', 3)
+        self.assertEqual("WXR", str(w + x + r))
 
 
 class TestSAME(unittest.TestCase):
