@@ -147,7 +147,7 @@ def _word_distance(word, confidence, choice, wildcard=None):
                 try:
                     d += 1 + confidence[i]
                 except TypeError:
-                    d += int(1 + confidence[i])
+                    d += 1 + int(confidence[i])
         else:
             return d + (len(word) - i + 1) * 9
     return d
@@ -245,6 +245,7 @@ def _truncate(avgmsg, confidences):
     frame = '-___-___' + ('-______' * fips_count) + _END_SEQUENCE
     assert len(frame) == len(avgmsg)
 
+    avgmsg = [i for i in avgmsg]
     for i in range(0, len(avgmsg)):
         if frame[i] != '_':
             if avgmsg[i] != frame[i]:
@@ -316,6 +317,7 @@ def average_message(headers, transmitter):
     avgmsg, confidences = _truncate(avgmsg, confidences)
 
     # Check the character against the space of possible characters
+    avgmsg = [i for i in avgmsg]
     for i in range(0, len(avgmsg)):
         c = avgmsg[i]
         byte_confidence = confidences[i]
