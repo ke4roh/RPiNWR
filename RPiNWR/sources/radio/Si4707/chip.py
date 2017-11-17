@@ -57,6 +57,7 @@ class Si4707(object):
         self.same_message = None
         self.last_EOM = 0
         self.transmitter = None
+        self.clock = time.time
 
     def __enter__(self):
         try:
@@ -159,11 +160,11 @@ class Si4707(object):
             """
             events = []
             with self.__delayed_event_lock:
-                while len(self.__delayed_events) and heapq.nsmallest(1, self.__delayed_events)[0][0] <= time.time():
+                while len(self.__delayed_events) and heapq.nsmallest(1, self.__delayed_events)[0][0] <= self.clock():
                     events.append(heapq.heappop(self.__delayed_events))
             for ev in events:
-                ev[1].time = time.time()
-                self._logger.debug("Firing for t=%f (%d ms late)" % (ev[0], int((time.time() - ev[0]) * 1000)))
+                ev[1].time = self.clock()
+                self._logger.debug("Firing for t=%f (%d ms late)" % (ev[0], int((self.clock() - ev[0]) * 1000)))
             return list([x[1] for x in events])
 
         # Here begins the body of __event_loop
@@ -181,12 +182,12 @@ class Si4707(object):
         """
         Fire an event after a time
         :param event: the event
-        :param when: the time.time() at which to fire the event
+        :param when: the time at which to fire the event
         """
         with self.__delayed_event_lock:
             heapq.heappush(self.__delayed_events, (when, event))
         self._logger.debug("Scheduled " + str(event) + " for " + str(when) + " which is " + str(
-            int((when - time.time()) * 1000)) + " ms in the future.")
+            int((when - self.clock()) * 1000)) + " ms in the future.")
 
     def wait_for_clear_to_send(self, timeout=1.0):
         """
@@ -196,8 +197,8 @@ class Si4707(object):
                  NotClearToSend if the time expires without getting a CTS
         """
         if timeout is not None:
-            expiry = timeout + time.time()
-        while expiry is None or time.time() < expiry:
+            expiry = timeout + self.clock()
+        while expiry is None or self.clock() < expiry:
             try:
                 self.status = Status(self.context.read_bytes(1))
                 if self.status.is_clear_to_send():

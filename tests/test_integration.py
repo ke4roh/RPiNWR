@@ -1,5 +1,21 @@
 # -*- coding: utf-8 -*-
+from tests.mock_clock import MockClock
+import unittest
+import time
+import os
+from RPiNWR.sources import TextPull, FolderMonitor
+from RPiNWR.messages.cache import MessageCache
+from circuits import Debugger, BaseComponent
+from RPiNWR.alerting import AlertTimer
+from RPiNWR.sources.radio.radio_component import Radio_Component, radio_run_script
+from RPiNWR.sources.radio.radio_squelch import Radio_Squelch
+import threading
+import re
+import shutil
+
 __author__ = 'ke4roh'
+
+
 # Tests for handling of incoming messages and the likes
 # Copyright © 2016 James E. Scarborough
 #
@@ -15,19 +31,6 @@ __author__ = 'ke4roh'
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-import unittest
-import time
-import os
-from RPiNWR.sources import TextPull, FolderMonitor
-from RPiNWR.messages.cache import MessageCache
-from circuits import Debugger, BaseComponent
-from RPiNWR.alerting import AlertTimer
-from RPiNWR.sources.radio.radio_component import Radio_Component, radio_run_script
-from RPiNWR.sources.radio.radio_squelch import Radio_Squelch
-import threading
-import re
-import shutil
 
 
 class DummyLogger(object):
@@ -75,6 +78,7 @@ class ScriptInjector(BaseComponent):
 class TestIntegration(unittest.TestCase):
     def setUp(self):
         self.box = None
+        self.box = None
 
     def tearDown(self):
         if self.box is not None:
@@ -96,21 +100,25 @@ class TestIntegration(unittest.TestCase):
 
         if not os.path.exists("dropzone"):
             os.makedirs("dropzone")
-        t = 1302983940
-        self.box = box = FolderMonitor(location, "dropzone", .5) + AlertTimer(clock=lambda: t) + MessageCache(
-            location, clock=lambda: t) + Debugger(logger=logger)
+        mt = 1302983940
+        clock = MockClock(epoch=mt - 100, speedup=10)
+        self.box = box = FolderMonitor(location, "dropzone", .5) + AlertTimer(clock=clock.time) + MessageCache(
+            location, clock=clock.time) + Debugger(logger=logger)
         box.start()
 
         logger.wait_for_n_events(1, re.compile('<started.*'), 5)
 
+        clock.set(mt)
         shutil.copyfile(os.path.join(os.path.dirname(os.path.realpath(__file__)), "KRAH.TO.W.0023.2011.txt"),
                         'dropzone/tow')
 
-        logger.wait_for_n_events(1, re.compile('<begin_alert.*'), 2)
-        t += 120
+        logger.wait_for_n_events(1, re.compile('<begin_alert.*'), 14)
+        mt += 120
+        clock.set(mt)
         logger.wait_for_n_events(1, re.compile('<continue_alert.*'), 2)
 
-        t += 60 * 45
+        mt += 60 * 45
+        clock.set(mt)
         logger.wait_for_n_events(1, re.compile('<all_clear.*'), 2)
 
         self.assertEquals(0, len(logger.error_history), str(logger.error_history))
@@ -130,15 +138,15 @@ class TestIntegration(unittest.TestCase):
         # Top of the hour gives some repeatability.
         # It's based on the current time because otherwise the radio will infer the wrong year on message timestamps.
         # TODO Design a better solution: Get year from context? Get time from context? Get time from radio?
-        t = int((time.time() - 60 * 60)/(60*60)) * 60 * 60
+        t = int((time.time() - 60 * 60) / (60 * 60)) * 60 * 60
         si4707args = "--hardware-context RPiNWR.sources.radio.Si4707.mock.MockContext --mute-after 0  --transmitter WXL58".split()
         injector = ScriptInjector()
-        self.box = box = Radio_Component(si4707args) + Radio_Squelch() + \
+        clock = MockClock(epoch=t)
+        self.box = box = Radio_Component(si4707args, clock=clock.time) + Radio_Squelch() + \
                          TextPull(location=location, url='http://127.0.0.1:17/') + \
-                         AlertTimer(continuation_reminder_interval_sec=.05, clock=lambda: t) + \
-                         MessageCache(location, clock=lambda: t) + \
+                         AlertTimer(continuation_reminder_interval_sec=.05, clock=clock.time) + \
+                         MessageCache(location, clock=clock.time) + \
                          Debugger(logger=logger) + injector
-        inject = injector.inject
 
         box.start()
 
@@ -155,16 +163,18 @@ class TestIntegration(unittest.TestCase):
 
         # send TOR, see alert propagate because the net is (bogus)
         t += 120
+        clock.set(t)
         injector.inject("send -WXR-TOR-037183+0030-%s-KRAH/NWS-" % time.strftime('%j%H%M', time.gmtime(t)))
         logger.wait_for_n_events(1, re.compile('<new_message[^\-]*-WXR-TOR-'), 5)
         logger.wait_for_n_events(1, re.compile('<new_score\D+40'), .5)
         logger.wait_for_n_events(1, re.compile('<begin_alert.*'), 2)
 
         t += 60 * .5
-
+        clock.set(t)
         logger.wait_for_n_events(1, re.compile('<continue_alert.*'), 2)
 
         t += 60 * 45
+        clock.set(t)
         logger.wait_for_n_events(1, re.compile('<all_clear.*'), 2)
 
         self.assertEquals(0, len(logger.error_history), str(logger.error_history))
