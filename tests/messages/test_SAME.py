@@ -46,6 +46,17 @@ class TestConfidentCharacter(unittest.TestCase):
         c4 = ConfidentCharacter(chr(0), 0)
         self.assertEqual(c1, c1 & c4)
 
+        x = ConfidentCharacter('X', 3) & ConfidentCharacter('V', 2)
+        self.assertEqual([5, 1, 1, 1, 5, 5, 5, 5], x.bitwise_confidence)
+
+    def testConfidenceDistance(self):
+        c1 = ConfidentCharacter('W', 3)
+        self.assertEqual(3, c1.confidence_distance_to('V'))
+
+    def testOverride(self):
+        c1 = ConfidentCharacter('W', 3)
+        self.assertEqual(ConfidentCharacter('V', bitwise_confidence=[0, 3, 3, 3, 3, 3, 3, 3]), c1.override_with('V'))
+
 
 class TestConfidentString(unittest.TestCase):
     def testConcatenating(self):
@@ -56,6 +67,86 @@ class TestConfidentString(unittest.TestCase):
         x = ConfidentCharacter('X', 3)
         r = ConfidentCharacter('R', 3)
         self.assertEqual("WXR", str(w + x + r))
+
+    def testConfidence(self):
+        cs = ConfidentString()
+        w = ConfidentCharacter('W', 3)
+        self.assertEqual("W", str(cs + w))
+
+        x = ConfidentCharacter('X', 3) & ConfidentCharacter('V', 2)
+        r = ConfidentCharacter('R', 1)
+        wxr = w + x + r
+        self.assertEqual("WXR", str(wxr))
+        self.assertEqual([3, 3, 1], wxr.get_confidence())
+        self.assertEqual([5, 1, 1, 1, 5, 5, 5, 5], wxr[1].bitwise_confidence)
+
+    def testOverride(self):
+        cs = ConfidentString("NWS", [3, 3, 3])
+        self.assertEqual(repr(ConfidentString("WWR", [1, 3, 2])), repr(cs.override_with("W\u0000R")))
+
+    def testDistanceToString(self):
+        cs = ConfidentString("Lolly", [3] * 5)
+        self.assertEqual(9, cs.confidence_distance_to('Lolky'))
+
+        cs = ConfidentString("Lolly", [3] * 5)
+        self.assertEqual(0, cs.confidence_distance_to('Lol\u0000y'))
+
+        cs = ConfidentString("Lollyasdfg", [3] * 10)
+        self.assertEqual(120, cs.confidence_distance_to('Lol\u0000y'))
+
+        cs = ConfidentString("Foo", [3] * 3)
+        self.assertEqual(3 * 8, cs.confidence_distance_to('Fo'))
+
+        cs = ConfidentString("Foo", [3] * 3)
+        self.assertEqual(0, cs.confidence_distance_to('Fo\u0000'))
+
+        cs = ConfidentString("Foo", [3] * 3)
+        self.assertEqual(0, cs.confidence_distance_to('Foo\u0000'))
+
+    def testReturnNearest(self):
+        cs = ConfidentCharacter('W', 3) + ConfidentCharacter(chr(0x00), 0) + ConfidentCharacter('R', 3)
+        closest = cs.closest(['WXR', 'CIV', 'EAS', 'PEP'])
+        self.assertEqual('WXR', str(closest))
+        self.assertEqual([3, 0, 3], closest.get_confidence())
+
+        cs = ConfidentString('WAR', [3, 2, 3])
+        closest = cs.closest(['WXR', 'CIV', 'EAS', 'PEP'])
+        self.assertEqual('WXR', str(closest))
+        self.assertEqual([3, 1, 3], closest.get_confidence())
+
+        cs = ConfidentString('WXR', [3, 3, 3])
+        self.assertEqual(ConfidentString('WXR', [3, 3, 3]), cs.closest(['W\u0000R', 'WVR']))
+
+    def testAnd(self):
+        cs = ConfidentString('WXR', [3, 3, 3]) & ConfidentString('W\x00R', [3, 0, 3])
+        self.assertEqual(ConfidentString('WXR', [6, 3, 6]), cs)
+
+        cs = ConfidentString('WXRA', [3, 3, 3, 3]) & ConfidentString('W\x00R', [3, 0, 3])
+        self.assertEqual(ConfidentString('WXRA', [6, 3, 6, 3]), cs)
+
+        cs = ConfidentString('WXR', [3, 3, 3]) & ConfidentString('W\x00RT', [3, 0, 3, 3])
+        self.assertEqual(ConfidentString('WXRT', [6, 3, 6, 3]), cs)
+
+    def testIndex(self):
+        cs = ConfidentString('WKRP', [3] * 4)
+        self.assertEqual(1, cs.index('K'))
+        self.assertEqual(2, cs.index(ConfidentCharacter('R', 3)))
+        with self.assertRaises(ValueError):
+            cs.index(ConfidentCharacter('K', 2))
+        with self.assertRaises(ValueError):
+            cs.index('X')
+
+    def testSlice(self):
+        cs = ConfidentString('WKRP', [3] * 4)
+        self.assertEqual(ConfidentString('WK', [3] * 2), cs[:2])
+        self.assertEqual(cs[:2], ConfidentString('WK', [3] * 2))
+        self.assertEqual(ConfidentCharacter('R', 3), cs[2:3][0])
+        self.assertEqual(ConfidentCharacter('K', 3), cs[1:3][0])
+        self.assertEqual(ConfidentCharacter('R', 3), cs[1:3][1])
+        self.assertEqual(1, cs[1:3].index('R'))
+        with self.assertRaises(ValueError):
+            cs.index(cs[0:2].index('R'))
+        self.assertEqual(2, len(cs[1:3]))
 
 
 class TestSAME(unittest.TestCase):

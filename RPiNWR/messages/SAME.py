@@ -24,6 +24,8 @@ import threading
 import functools
 import calendar
 import operator
+from collections import Sequence
+import itertools
 from .CommonMessage import CommonMessage
 from ..sources.radio.nwr_data import get_counties, get_wfo
 
@@ -109,8 +111,10 @@ _DURATION_NUMBERS = tuple([x[1] for x in VALID_DURATIONS])
 # takes a list of codes and a list of valid codes, and checks to make sure all of the codes correspond to a valid list
 # e.g. if we have a list of ['WXR', 'WXR', 'WXR'] we should get the result that this is a valid originator code
 
-class ConfidentCharacter(object):
+class ConfidentCharacter(tuple):
     """
+    Immutable representation of a character with its confidence.
+    
     R: Know the character (or lack thereof)
     R: know the bitwise confidence
     R: produce a byte-wise confidence int(sum(bitwise)/8)
@@ -118,8 +122,9 @@ class ConfidentCharacter(object):
     C: combine to make a single character “&” (honor the bit values having more confidence, the confidence is winning-losing confidence)
 
     """
+    __slots__ = []
 
-    def __init__(self, char, confidence=None, bitwise_confidence=None):
+    def __new__(cls, char, confidence=None, bitwise_confidence=None):
         """
         :param char: the character to represent (as a character)
         :param confidence: integer indicating confidence for the whole byte
@@ -127,17 +132,34 @@ class ConfidentCharacter(object):
         :param bitwise_confidence: 8 element array of confidence for each bit (0=lsb)
            (only one of confidence or bitwise_confidence)
         """
-        self.char = char
+        if char == '\u0000':
+            confidence = 0
+            bitwise_confidence = None
+
         if confidence is None:
             if len(bitwise_confidence) != 8:
                 raise ValueError("Confidence must be an array, length 8, of integers")
-            self.bitwise_confidence = bitwise_confidence
-            self.confidence = sum(bitwise_confidence) >> 3
+            confidence = sum(bitwise_confidence) >> 3
         else:
             if bitwise_confidence is not None:
                 raise ValueError("Only one of bitwise_confidence and confidence can be specified")
-            self.confidence = confidence
-            self.bitwise_confidence = [confidence] * 8
+            bitwise_confidence = [confidence] * 8
+        return tuple.__new__(cls, (char, confidence, bitwise_confidence))
+
+    @property
+    def char(self):
+        return tuple.__getitem__(self, 0)
+
+    @property
+    def confidence(self):
+        return tuple.__getitem__(self, 1)
+
+    @property
+    def bitwise_confidence(self):
+        return tuple.__getitem__(self, 2)
+
+    def __getitem__(self, item):
+        raise TypeError
 
     def __repr__(self):
         return '<ConfidentCharacter \'%s\' %s>' % (self.char, str(self.bitwise_confidence))
@@ -159,10 +181,37 @@ class ConfidentCharacter(object):
         else:
             raise ValueError()
 
-    def __eq__(self, other):
-        if isinstance(self, other.__class__):
-            return self.__dict__ == other.__dict__
-        return False
+    def confidence_distance_to(self, c):
+        """
+        :param c: a character
+        :return: an integer sum of the bitwise confidences not in agreement with the given character's bits
+        """
+        if c == '\u0000':
+            return 0
+        dist = 0
+        bc = self.get_bit_confidences()
+        for i in range(0, 8):
+            test_bit = (ord(c) >> i) & 1
+            if test_bit and bc[i] < 0:
+                dist += -bc[i]
+            if not test_bit and bc[i] > 0:
+                dist += bc[i]
+        return dist
+
+    def override_with(self, c):
+        """
+        :param c: a character
+        :return: a new ConfidentCharacter with adjusted confidence.  Bits changed will have confidence 0,
+            bits unchanged will have confidence unchanged.
+        """
+        if c == self.char:
+            return self
+        bc = self.get_bit_confidences()
+        for i in range(0, 8):
+            new_bit = (ord(c) >> i) & 1
+            if (new_bit and bc[i] < 0) or (not new_bit and bc[i] > 0):
+                bc[i] = 0
+        return ConfidentCharacter(c, bitwise_confidence=list(map(operator.abs, bc)))
 
     def get_bit_confidences(self):
         """Compute the confidence for each bit being true or false"""
@@ -177,22 +226,113 @@ class ConfidentCharacter(object):
         return how_true
 
 
-class ConfidentString(object):
+class ROSlice(Sequence, tuple):
     """
-    String w/confidence
+    https://stackoverflow.com/a/3485490/8221937
+    """
+    __slots__ = []
+
+    def __new__(cls, alist, start, stop):
+        start = (start is not None and start) or 0
+        if start < 0:
+            start += len(alist)
+        stop = (stop is not None and stop) or len(alist)
+        if stop < 0:
+            stop += len(alist)
+        if stop > len(alist):
+            raise IndexError
+        if start > len(alist):
+            raise IndexError
+        return tuple.__new__(cls, (alist, start, stop))
+
+    @property
+    def alist(self):
+        return tuple.__getitem__(self, 0)
+
+    @property
+    def start(self):
+        return tuple.__getitem__(self, 1)
+
+    @property
+    def stop(self):
+        return tuple.__getitem__(self, 2)
+
+    def __len__(self):
+        return self.stop - self.start
+
+    def adj(self, i):
+        if i < 0:
+            i += len(self)
+        return i + self.start
+
+    def __getitem__(self, item):
+        if isinstance(item, slice):
+            return ROSlice(self.alist,
+                           (self.start + item.start is not None and item.start) or 0,
+                           (self.stop + item.stop is not None and item.stop) or len(self))
+        if item >= len(self) or item < -len(self):
+            raise IndexError
+
+        return self.alist[self.adj(item)]
+
+    def __repr__(self):
+        return "<ROSlice(%s)>" % ",".join(repr(x) for x in self)
+
+    def __eq__(self, other):
+        try:
+            for x, y in itertools.zip_longest(self, other, fillvalue="NOPE_NOT_THIS_ONE"):
+                if x != y:
+                    return False
+        except AttributeError:
+            return False
+        return True
+
+
+class ConfidentString(Sequence, tuple):
+    """
+    Immutable String w/confidence
     R: Compute confidence for the string
     C: Combine with a regular string to produce another String w/confidence, reducing confidence for bytes changed
     C: Concatenate to another string w/confidence “+”
     C: Concatenate a character with “+”
     R: Know characters (in order)
     """
+    __slots__ = []
 
-    def __init__(self, data=None):
+    def __new__(cls, data=None, confidence=None, start=0, end=None):
+        """
+
+        :param data: An array or tuple of ConfidentCharacters or a String, with confidence provided separately
+        :param confidence: If data is ConfidentCharacters, None.  Otherwise, an array of integer confidences.
+        :param start: The index of the first character of data to consider
+        :param end: The index of the last character of data to consider
+        """
         if data is None:
             data = []
-        if not all(isinstance(x, ConfidentCharacter) for x in data):
+
+        if end is None:
+            end = len(data)
+
+        # if data is a string, build it into ConfidentCharacters
+        if "lower" in dir(data):
+            str_data = data
+            data = tuple(ConfidentCharacter(str_data[i], confidence[i]) for i in range(start, end))
+            start = 0
+            end = len(data)
+        elif not all(isinstance(x, ConfidentCharacter) for x in data):
             raise ValueError("Only ConfidentCharacters can be in data")
-        self.data = data
+
+        if not isinstance(data, tuple):
+            data = tuple(data)
+
+        if start != 0 or end != len(data):
+            data = ROSlice(data, start, end)
+
+        return tuple.__new__(cls, (data,))
+
+    @property
+    def data(self):
+        return tuple.__getitem__(self, 0)
 
     def __add__(self, other):
         if isinstance(self, other.__class__):
@@ -211,6 +351,115 @@ class ConfidentString(object):
         for c in self.data:
             s += c.char
         return s
+
+    def __getitem__(self, item):
+        if isinstance(item, slice):
+            if not (item.step is None or item.step == 1):
+                raise ValueError("Steps are unsupported")
+            return ConfidentString(
+                self.data,
+                start=item.start,
+                end=item.stop)
+        return self.data.__getitem__(item)
+
+    def get_confidence(self):
+        conf = []
+        for i in self.data:
+            conf.append(i.confidence)
+        return conf
+
+    def __len__(self):
+        return len(self.data)
+
+    def __eq__(self, other):
+        if isinstance(self, other.__class__):
+            return self.data == other.data
+        return False
+
+    def __repr__(self):
+        return "<ConfidentString(\'%s\',%s)>" % (str(self), str(self.get_confidence()))
+
+    def __and__(self, other):
+        if isinstance(self, other.__class__):
+            result = []
+            for i in range(0, min(len(other), len(self))):
+                result.append(self[i] & other[i])
+            if len(other) < len(self):
+                result.extend(self.data[len(other):])
+            elif len(self) < len(other):
+                result.extend(other.data[len(self):])
+
+            return ConfidentString(result)
+        else:
+            raise ValueError("ConfidentStrings only AND with other ConfidentStrings")
+
+    def confidence_distance_to(self, candidate):
+        """
+        Calculate the bitwise confidence distance from this string to the candidate.
+        If this string is longer than the candidate, then every bit is wrong for the missing bytes.
+        If this string is shorter than the candidate, bits are also wrong by the best confidence in this string.
+        Null (\u0000) have confidence 0, both directions.
+        :param candidate: A regular string to compare
+        :return: an integer representing the sum of confidences of bits to change
+        """
+        distance = 0
+        for i in range(0, min(len(candidate), len(self))):
+            distance += self[i].confidence_distance_to(candidate[i])
+        if len(candidate) < len(self):
+            distance += sum(sum(c.bitwise_confidence) for c in self.data[len(candidate):])
+        if len(self) < len(candidate):
+            distance += 8 * (len(candidate) - len(self) - candidate.count('\u0000', len(self))) * max(
+                c.confidence for c in self.data)
+        return distance
+
+    def override_with(self, valid_str):
+        """
+        :param valid_str: A valid string to use.  Null values in this string will be passed over.
+        :return: A new ConfidentString
+        """
+        assert len(valid_str) == len(self)
+
+        # Short circuit no change
+        changed = False
+        for i in range(0, len(self)):
+            changed |= self[i].char != valid_str[i]
+        if not changed:
+            return self
+
+        d = list(self.data)
+        for i in range(0, len(d)):
+            if valid_str[i] != '\x00':
+                d[i] = d[i].override_with(valid_str[i])
+        return ConfidentString(d)
+
+    def closest(self, possibilities):
+        min_dist = self.confidence_distance_to(possibilities[0])
+        closest = possibilities[0]
+        tied = False
+        for p in possibilities[1:]:
+            d2 = self.confidence_distance_to(p)
+            if d2 < min_dist:
+                min_dist = d2
+                closest = p
+                tied = False
+            elif d2 == min_dist:
+                tied = True
+        assert not tied
+        return self.override_with(closest)
+
+    def index(self, value, start=0, stop=None):
+        '''Return the first index of the given value, which may be specified as a ConfidentCharacter or
+           a character (string of length 1).  If a ConfidentCharacter is provided, then its confidence
+           must also match.
+           Raises ValueError if the value is not present.
+        '''
+        if isinstance(value, ConfidentCharacter):
+            return self.data.index(value, start is not None or 0, stop is not None or len(self))
+        if isinstance(value, str) and len(value) == 1:
+            for i in range(0, len(self)):
+                if self.data[i].char == value:
+                    return i
+        raise ValueError()
 
 
 def check_if_valid_code(codes, valid_list):
@@ -332,7 +581,10 @@ def _reconcile_word(word, confidences, start, choices):
     return word, confidences, matched
 
 
-_END_SEQUENCE = "+0___-_______-____/NWS-"
+_END_SEQUENCE = "+0___-_______-____/NWS-".replace('_', '\u0000')
+_START_SEQUENCE = "-___-___".replace('_', '\u0000')
+_COUNTY_SEQUENCE = "-______".replace('_', '\u0000')
+_SHELL_CANDIDATES = [_START_SEQUENCE + _COUNTY_SEQUENCE * c + _END_SEQUENCE + '\u0000' * 9 for c in range(1, 32)]
 
 
 def _truncate(avgmsg, confidences):
@@ -694,6 +946,29 @@ def average_message(headers, transmitter):
     # 4. Lay down all the sentinel characters
     # 5. Check that characters are in the valid set for the section of the message
     # 6. Substitute any low-confidence data with data from the list of possible values
+
+    # header will contain our best of 3 string, computed bitwise, and we'll improve on that as we go.
+    # TODO make null characters \u0000 so they will have 0 confidence
+    # TODO compare confidence to 0
+    # TODO move this into SAMEMessage
+    header = ConfidentString(headers[0][0], headers[0][1])
+    for h in headers[1:]:
+        header &= ConfidentString(h[0], h[1])
+
+    # Find the length, set the sentinel characters
+    header = header.closest(_SHELL_CANDIDATES)
+    header = header[:header.index('+') + len(_END_SEQUENCE)]
+
+    # TODO look for the right codes
+
+    candidates = []
+    for l in range(38, len(avgmsg) + 1, 7):
+        candidates.append((_word_distance(avgmsg[l - 23:l], confidences, _END_SEQUENCE, '_'), l))
+
+    winner = min(candidates)
+    l = winner[1]
+    avgmsg = avgmsg[0:l]
+    confidences = confidences[0:l]
 
     # init
     confidences = []
