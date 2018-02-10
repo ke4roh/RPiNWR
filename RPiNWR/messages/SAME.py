@@ -124,27 +124,28 @@ class ConfidentCharacter(tuple):
     """
     __slots__ = []
 
-    def __new__(cls, char, confidence=None, bitwise_confidence=None):
+    def __new__(cls, char, confidence=None):
         """
         :param char: the character to represent (as a character)
         :param confidence: integer indicating confidence for the whole byte
-           (only one of confidence or bitwise_confidence)
-        :param bitwise_confidence: 8 element array of confidence for each bit (0=lsb)
-           (only one of confidence or bitwise_confidence)
+           or an array/tuple of length 8 to indicate confidence for each bit
         """
         if char == '\u0000':
             confidence = 0
-            bitwise_confidence = None
 
         if confidence is None:
-            if len(bitwise_confidence) != 8:
-                raise ValueError("Confidence must be an array, length 8, of integers")
-            confidence = sum(bitwise_confidence) >> 3
+            raise ValueError("Confidence is required (int like 0-9, or array for each bit")
+
+        if hasattr(confidence, '__len__'):
+            assert len(confidence) == 8
+            bitwise_confidence = confidence
         else:
-            if bitwise_confidence is not None:
-                raise ValueError("Only one of bitwise_confidence and confidence can be specified")
-            bitwise_confidence = [confidence] * 8
-        return tuple.__new__(cls, (char, confidence, bitwise_confidence))
+            bitwise_confidence = (confidence,) * 8
+
+        if type(bitwise_confidence) is not tuple:  # Unmodifiable
+            bitwise_confidence = tuple(bitwise_confidence)
+
+        return tuple.__new__(cls, (char, bitwise_confidence))
 
     @property
     def char(self):
@@ -152,11 +153,13 @@ class ConfidentCharacter(tuple):
 
     @property
     def confidence(self):
-        return tuple.__getitem__(self, 1)
+        """The byte-wise confidence for this character"""
+        return sum(self.bitwise_confidence) >> 3
 
     @property
     def bitwise_confidence(self):
-        return tuple.__getitem__(self, 2)
+        """A tuple of length 8, representing the confidence for each bit in this character"""
+        return tuple.__getitem__(self, 1)
 
     def __getitem__(self, item):
         raise TypeError
@@ -173,7 +176,7 @@ class ConfidentCharacter(tuple):
             if new_how_true[i] > 0:
                 new_byte |= 1 << i
 
-        return ConfidentCharacter(chr(new_byte), bitwise_confidence=list(map(operator.abs, new_how_true)))
+        return ConfidentCharacter(chr(new_byte), confidence=list(map(operator.abs, new_how_true)))
 
     def __add__(self, other):
         if isinstance(self, other.__class__):
@@ -211,7 +214,7 @@ class ConfidentCharacter(tuple):
             new_bit = (ord(c) >> i) & 1
             if (new_bit and bc[i] < 0) or (not new_bit and bc[i] > 0):
                 bc[i] = 0
-        return ConfidentCharacter(c, bitwise_confidence=list(map(operator.abs, bc)))
+        return ConfidentCharacter(c, confidence=list(map(operator.abs, bc)))
 
     def get_bit_confidences(self):
         """Compute the confidence for each bit being true or false"""
@@ -303,7 +306,8 @@ class ConfidentString(Sequence, tuple):
         """
 
         :param data: An array or tuple of ConfidentCharacters or a String, with confidence provided separately
-        :param confidence: If data is ConfidentCharacters, None.  Otherwise, an array of integer confidences.
+        :param confidence: If data is ConfidentCharacters, None.  Otherwise, an array of integer confidences
+            (or a string of confidence digits).
         :param start: The index of the first character of data to consider
         :param end: The index of the last character of data to consider
         """
@@ -312,6 +316,13 @@ class ConfidentString(Sequence, tuple):
 
         if end is None:
             end = len(data)
+
+        if start is not None and start == end:
+            return tuple.__new__(cls, ([],))
+
+        if confidence is not None and hasattr(confidence, "isnumeric"):
+            assert confidence.isnumeric()
+            confidence = [int(c) for c in confidence]
 
         # if data is a string, build it into ConfidentCharacters
         if "lower" in dir(data):
@@ -335,6 +346,7 @@ class ConfidentString(Sequence, tuple):
         return tuple.__getitem__(self, 0)
 
     def __add__(self, other):
+        """Concatenate"""
         if isinstance(self, other.__class__):
             new_data = list(self.data)
             new_data.extend(other.data)
@@ -362,11 +374,13 @@ class ConfidentString(Sequence, tuple):
                 end=item.stop)
         return self.data.__getitem__(item)
 
-    def get_confidence(self):
+    @property
+    def confidence(self):
+        """Return byte-wise confidence"""
         conf = []
         for i in self.data:
             conf.append(i.confidence)
-        return conf
+        return tuple(conf)
 
     def __len__(self):
         return len(self.data)
@@ -377,9 +391,10 @@ class ConfidentString(Sequence, tuple):
         return False
 
     def __repr__(self):
-        return "<ConfidentString(\'%s\',%s)>" % (str(self), str(self.get_confidence()))
+        return "<%s(\'%s\',%s)>" % (self.__class__.__name__, str(self), str(self.confidence))
 
     def __and__(self, other):
+        """Merge two ConfidentStrings together, increasing confidence where same"""
         if isinstance(self, other.__class__):
             result = []
             for i in range(0, min(len(other), len(self))):
@@ -415,37 +430,59 @@ class ConfidentString(Sequence, tuple):
     def override_with(self, valid_str):
         """
         :param valid_str: A valid string to use.  Null values in this string will be passed over.
-        :return: A new ConfidentString
+        :return: A new ConfidentString, whose length is the same as valid_str, and whose content has been
+        updated to match valid_str and confidence docked for any mismatches, for all but the \u0000
+        characters in valid_str.
         """
-        assert len(valid_str) == len(self)
 
         # Short circuit no change
-        changed = False
-        for i in range(0, len(self)):
-            changed |= self[i].char != valid_str[i]
+        changed = len(self) != len(valid_str)
+        if not changed:
+            for i in range(0, len(self)):
+                changed |= self[i].char != valid_str[i]
+                if changed:
+                    break
         if not changed:
             return self
 
         d = list(self.data)
+        if len(valid_str) > len(self):
+            d.extend((ConfidentCharacter('\u0000', 0),) * (len(valid_str) - len(self)))
+        d = d[:len(valid_str)]
+
+        confidence_sum = 0
+        confidence_count = 0
         for i in range(0, len(d)):
-            if valid_str[i] != '\x00':
+            if valid_str[i] != '\u0000':
                 d[i] = d[i].override_with(valid_str[i])
+                if len(self) > i and self[i].char != '\u0000':
+                    confidence_sum += d[i].confidence
+                    confidence_count += 1
+
+        # The confidence of a character substutited for null is the mean confidence of the string
+        # based on all the non-null characters
+        mean_confidence = int(confidence_sum / confidence_count)
+        for i in range(0, len(d)):
+            if valid_str[i] != '\u0000' and (i >= len(self) or self[i].char == '\u0000'):
+                d[i] = ConfidentCharacter(d[i].char, mean_confidence)
+
         return ConfidentString(d)
 
     def closest(self, possibilities):
-        min_dist = self.confidence_distance_to(possibilities[0])
-        closest = possibilities[0]
-        tied = False
-        for p in possibilities[1:]:
-            d2 = self.confidence_distance_to(p)
-            if d2 < min_dist:
-                min_dist = d2
-                closest = p
-                tied = False
-            elif d2 == min_dist:
-                tied = True
-        assert not tied
-        return self.override_with(closest)
+        """
+
+        :param possibilities: Either a list of str OR a list of tuples of (weight, str).  All strings must be
+        the same length.
+        :return: The best matched string
+        """
+        if isinstance(possibilities[0], str):
+            possibilities = [(1, p) for p in possibilities]
+
+        # While it is not strictly necessary to perform all the comparisons necessary to produce the completely
+        # sorted list, the practical number of possibilities makes it silly to worry over the log(n) extra comparisons
+        distances = sorted([((1+self.confidence_distance_to(p))/float(w), p) for w, p in possibilities])
+        assert len(distances) == 1 or distances[0][0] < distances[1][0]
+        return self.override_with(distances[0][1])
 
     def index(self, value, start=0, stop=None):
         '''Return the first index of the given value, which may be specified as a ConfidentCharacter or
@@ -467,396 +504,6 @@ def check_if_valid_code(codes, valid_list):
     if set(valid_list).issuperset(codes) and codes[0] == codes[1] and codes[1] == codes[2]:
         return codes[0]
 
-
-def _reconcile_character(bitstrue, bitsfalse, pattern):
-    """
-    :param bitstrue: an array of numbers specifying the weights favoring each bit in turn being true, LSB first
-    :param bitsfalse: like bitstrue, but favoring bits being false
-    :param pattern: A string containing all the possible characters for the spot
-    :return: confidence, char - a tuple with confidence and the character
-    """
-    if sum(bitstrue) == 0 and len(pattern) > 1:  # only nulls received, more than 1 possibility
-        return 0, chr(0)
-    near = []
-    for t in list(pattern):
-        distance = 0
-        for j in range(0, 8):
-            bit_weight = bitstrue[j] - bitsfalse[j]
-            if ((ord(t) >> j) & 1) != (bit_weight > 0) & 1:
-                distance += abs(bit_weight)
-        near.append((distance, t))
-    near.sort()
-    if len(near) == 1 or near[0][0] != near[1][0]:
-        confidence = 2
-    else:
-        confidence = 1
-    return confidence, near[0][1]
-
-
-# CLEAN: -WXR-TOR-039173-039051-139069+0030-1591829-KCLE/NWS
-# DIRTY: -WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀḖḀỻờ~ỿ
-__ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-__NUMERIC = '0123456789'
-__PRINTABLE = '\x10\x13' + "".join(filter(lambda x: ord(x) != 43 and ord(x) != 45, [chr(x) for x in range(33, 127)]))
-_SAME_CHARS = [
-    '-', 'ECWP', 'AIXE', 'SVRP', '-', __ALPHA, __ALPHA, __ALPHA, '-',
-    __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, __PRINTABLE, -7,
-    '+', __NUMERIC, __NUMERIC, '0134', '05', '-',
-    '0123', __NUMERIC, __NUMERIC, '012', __NUMERIC, '012345', __NUMERIC, '-',
-    __ALPHA, __ALPHA, __ALPHA, __ALPHA, '/', 'N', 'W', 'S', '-'
-]
-
-
-def _word_distance(word, confidence, choice, wildcard=None):
-    d = 0
-    for i in range(0, len(choice)):
-        if len(word) > i:
-            if choice[i] != wildcard and word[i] != choice[i]:
-                try:
-                    d += 1 + confidence[i]
-                except TypeError:
-                    d += 1 + int(confidence[i])
-        else:
-            return d + (len(word) - i + 1) * 9
-    return d
-
-
-def __median(lst):
-    # http://stackoverflow.com/a/29870273/2544261
-    quotient, remainder = divmod(len(lst), 2)
-    if remainder:
-        return sorted(lst)[quotient]
-    return float(sum(sorted(lst)[quotient - 1:quotient + 1]) / 2)
-
-
-def _reconcile_word(word, confidences, start, choices):
-    """
-    :param word: the message chunk
-    :param confidences: confidences for each character in the message
-    :param start: the index at which to look for the choices
-    :param choices: a list of choices that might appear at the given index, or tuples of weight and choice
-    if there are different probabilities for different possibilities
-    :return: a tuple of the corrected message, the corresponding confidence (as an array of ints range 0-9),
-         and a boolean indicating if a suitable match was found
-    """
-    if not len(choices):
-        # If there are no choices, status-quo is best we can do
-        return word, confidences, False
-    if len(word) <= start:
-        return word, confidences, False
-
-    matched = False
-    try:
-        confidences[0] + 1
-    except TypeError:
-        confidences = list([int(x) for x in confidences])
-    try:
-        choices[0][0] + 0
-    except TypeError:
-        choices = list([(1, x) for x in choices])
-
-    end = start + len(choices[0][1])
-    word = word[start:end]
-    confidence = confidences[start:end]
-    candidates = []
-    for weight, c in choices:
-        candidates.append(((_word_distance(word, confidence, c) + 1) / weight, c))
-    candidates.sort()
-    if candidates[0][0] < max(4, __median(confidences)) and (
-                    len(candidates) == 1 or candidates[0][0] < candidates[1][0]):
-        word = candidates[0][1]
-        # Update the confidence
-        base_confidence = max(0, int(max(4, max(confidences[start:end])) - candidates[0][0] / (end - start)))
-        for i in range(start, end):
-            if word[i] != word[i - start]:
-                confidences[i] = base_confidence
-            else:
-                # added to ensure that we don't get confidences over 9
-                confidences[i] = min(9, base_confidence >> 3)
-        # replace the word
-        l = list(word)
-        l[start:end] = list(word)
-        word = "".join(l)
-        matched = True
-    return word, confidences, matched
-
-
-_END_SEQUENCE = "+0___-_______-____/NWS-".replace('_', '\u0000')
-_START_SEQUENCE = "-___-___".replace('_', '\u0000')
-_COUNTY_SEQUENCE = "-______".replace('_', '\u0000')
-_SHELL_CANDIDATES = [_START_SEQUENCE + _COUNTY_SEQUENCE * c + _END_SEQUENCE + '\u0000' * 9 for c in range(1, 32)]
-
-
-def _truncate(avgmsg, confidences):
-    """
-    Compute the length of the message and fill in the punctuation characters.
-
-    :param avgmsg:
-    :param confidences:
-    :return: tuple same as the parameters, with updated values
-    """
-    if len(avgmsg) < 38:
-        # It's too short; there's no hope
-        return avgmsg, confidences
-
-    candidates = []
-    for l in range(38, len(avgmsg) + 1, 7):
-        candidates.append((_word_distance(avgmsg[l - 23:l], confidences, _END_SEQUENCE, '_'), l))
-
-    winner = min(candidates)
-    l = winner[1]
-    avgmsg = avgmsg[0:l]
-    confidences = confidences[0:l]
-
-    # type-checking in case we get a string instead of a list
-    if not type(confidences) == 'list':
-        confidences = [int(i) for i in confidences]
-
-    confidence_chars = len(_END_SEQUENCE.replace("_", ""))
-    # The confidence is greater for a match than each character being right.
-    # TODO refine confidence calculation to make more sense
-    end_confidence = int((confidence_chars * __median(confidences) - winner[0]) / confidence_chars)
-
-    # Lay in the characters we just checked
-    fips_count = int((len(avgmsg) - len(_END_SEQUENCE) - 8) / 7)
-    frame = '-___-___' + ('-______' * fips_count) + _END_SEQUENCE
-    assert len(frame) == len(avgmsg)
-
-    avgmsg = [i for i in avgmsg]
-    for i in range(0, len(avgmsg)):
-        if frame[i] != '_':
-            if avgmsg[i] != frame[i]:
-                avgmsg[i] = frame[i]
-                confidences[i] = end_confidence
-            else:
-                confidences[i] = max(end_confidence, confidences[i])
-
-    return avgmsg, confidences
-
-
-# split message into component parts according to SAME protocol
-# EXAMPLE:
-# format: -<Originator>-<Event>-<Locations>-<Purge Time>-<Timestamp>-<Call Sign>
-# clean message: -WXR-TOR-039173-039051-139069+0030-1591829-KCLE/NWS
-# dirty message: -WXR-RWT-020103-020209-020091-°20121-029047-029165%029095-029037;0030-3031710,KEAX\\'ÎWS-
-
-# TODO: split the end of the message (KCLE/NWS) into separate parts
-def split_message(message, confidences):
-    # first, truncate the message and separate message and confidences
-    truncated_message = _truncate(message, confidences)
-    # this is a stopgap fix to account for passing in a list from _truncate()
-    truncated_message = (''.join(truncated_message[0]), truncated_message[1])
-    message = truncated_message[0]
-    confidences = truncated_message[1]
-
-    # init
-    # this is what we want to use to initially split up the message, we expect this to be a '+'
-    # _truncate will always give us a message with 22 chars after the delimiter, therefore we want the character
-    # right before that set of chars (i.e. the delimiter itself)
-
-    main_delimiter = message[len(message) - 23]
-    final_message = []
-    final_confidences = []
-    # counts number of county codes, we need to return this for later use in avgmsg()
-    fips_counter = 0
-
-    # start splitting!
-    main_delimiter_split = message.split(main_delimiter)
-
-    if len(main_delimiter_split) == 2:
-        # split up to (and including) location codes
-        first_half_split = main_delimiter_split[0].split('-')
-        # everything after location codes
-        second_half_split = main_delimiter_split[1].split('-')
-        # 0030-3031710,KEAX\\'ÎWS-
-
-        # add to our set of return values and replace delimiters
-        # first half:
-        final_message.append('-' + (first_half_split[1]))
-        final_message.append('-' + (first_half_split[2]))
-        for i in range(3, len(first_half_split)):
-            final_message.append('-' + first_half_split[i])
-            fips_counter += 1
-
-        # second half:
-        final_message.append('+' + (second_half_split[0]))
-        final_message.append('-' + (second_half_split[1]))
-        final_message.append('-' + (second_half_split[2] + '-'))
-
-    # align confidences with message parts
-    count = 0
-    for part in final_message:
-        # this is the "chunk" of confidences we align with each message part
-        con_set = []
-        # this is the array that contains arrays of location code confidences
-        location_con_set = []
-        # this is to handle location codes, since they are in their own array
-        if type(part) == list:
-            for member in part:
-                # TODO: fix this terrible variable name
-                this_location_array = []
-                for char in member:
-                    this_location_array.append(confidences[count])
-                    count += 1
-                location_con_set.append(this_location_array)
-            final_confidences.append(location_con_set)
-        else:
-            for char in part:
-                con_set.append(confidences[count])
-                count += 1
-            final_confidences.append(con_set)
-        # empty out con_set
-        con_set = []
-    return [final_message, final_confidences, fips_counter]
-
-
-class MessageChunk:
-    """
-    1. make Object (as in member of a class, MessageChunk NOT SAMEMessage) for each chunk in message,
-    object contains chars and confidences
-    2. make them respect subtraction operator (WXR[bits]-WAR[bits], 3 - 2)
-    when you subtract (say) WXR-WAR, you get the answer + the new (changed) confidence
-    3. subtraction should return a new instance of the object
-    4. pick the best choice (least distance from the received data) (highest sum of confidences = least distance)
-    :param chars: group of three chunks of chars, e.g. ['WXR', 'WXX', 'WXZ']
-    :param confidences: group of three groups of confidences which apply to chars,
-    e.g. [[3, 3, 3]. [3, 2, 3,],[1, 2, 3]]
-    :param byte_confidence_index: this is used in approximate chars to track which group of valid chars
-    (these are stored in _SAME_CHARS) to try to approximate against.  _SAME_CHARS is an array of strings of valid chars,
-    this value indexes that array as we approximate.  For example:
-     char to approximate: Ḁ
-     group to approximate against: 'AIXE'
-    :param transmitter: transmitter
-    """
-
-    def __init__(self, chars, confidences, byte_confidence_index, transmitter, fips_counter, valid_times):
-
-        self.byte_confidence_index = byte_confidence_index
-        self.transmitter = transmitter
-        self.fips_counter = fips_counter
-        self.valid_times = valid_times
-        matched = False
-        # this tracks the amount we need to increment the byte_confidence_index if reconcile_word returns a match
-        potential_byte_confidence_index_offset = 0
-
-        # TODO: do this once and pass into constructor, add back to avgmsg
-        # get FIPS codes (which, in some non-weather types of messages, may not be FIPS)
-        try:
-            candidate_fips = list(get_counties(self.transmitter))
-        except KeyError:
-            candidate_fips = []
-
-        # get transmitter codes
-        try:
-            wfo = [get_wfo(self.transmitter)]
-        except KeyError:
-            wfo = []
-
-        bitstrue, bitsfalse = self.sum_confidence(chars, confidences)
-        self.chars, self.confidences = self.assemble_chars(bitstrue, bitsfalse)
-
-        # Clean up chunks of chars before we attempt to approximate individual chars
-        # (hooray for pythonic "case" statements!)
-        if 0 <= byte_confidence_index <= 3:
-            self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, _ORIGINATOR_CODES)
-            potential_byte_confidence_index_offset += 4
-        elif 4 <= byte_confidence_index <= 6:
-            self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, _EVENT_CODES)
-            potential_byte_confidence_index_offset += 4
-        elif 7 <= byte_confidence_index <= 12:
-            # TODO add a modest bias for adjacent counties to resolve ties in bytes
-            # TODO: change this so we end at fixing by word if we don't have to fix more than 1 byte, otherwise fix by byte (HINT: check the 'matched' value)
-            # Check off counties until the maximum number have been reconciled
-            while fips_counter > 0:
-                '''
-                self.chars, self.confidences, matched, fips_counter = self.check_fips(self.chars, self.confidences,
-                                                                                 fips_counter, candidate_fips)
-                '''
-                self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, candidate_fips)
-                fips_counter -= 1
-            potential_byte_confidence_index_offset += 7
-
-            # Reconcile purge time
-        elif 13 <= byte_confidence_index <= 17:
-            self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, VALID_DURATIONS)
-            potential_byte_confidence_index_offset += 4
-
-            # Reconcile issue time
-            # TODO: fix this so it matches up with the '+' correctly (index 20)
-        elif 18 <= byte_confidence_index <= 24:
-            self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, valid_times)
-            potential_byte_confidence_index_offset += 8
-
-            # Reconcile the end
-        elif 25 <= byte_confidence_index <= 29:
-            self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, wfo)
-            potential_byte_confidence_index_offset += 5
-
-        elif 30 <= byte_confidence_index <= 33:
-            self.chars, self.confidences, matched = _reconcile_word(self.chars, self.confidences, 1, ['NWS'])
-            potential_byte_confidence_index_offset += 5
-
-            # After cleaning up by word, we clean up by char if we had to change more than one byte
-        if not matched:
-            self.chars, self.confidences, self.byte_confidence_index = self.approximate_chars(self.chars,
-                                                                                              self.confidences,
-                                                                                              bitstrue, bitsfalse,
-                                                                                              self.byte_confidence_index)
-        else:
-            self.byte_confidence_index += potential_byte_confidence_index_offset
-
-    # takes chars and computes sums of confidence of bit values
-    @staticmethod
-    def sum_confidence(chars, confidences):
-        # we want to multiply by the length of an item in confidences in case len(item) != len(confidences)
-        size = len(confidences[0])
-        bitstrue = [0] * 8 * size
-        bitsfalse = [0] * 8 * size
-        for (i) in range(0, len(confidences)):
-            c = confidences[i]
-            # convert to int if c is a string
-            if type(c) is str:
-                confidence = [int(x) for x in c]
-            # otherwise leave it as a list of ints
-            else:
-                confidence = c
-            '''
-            i == strings
-            j == chars/bytes
-            k == bits
-            '''
-            for j in range(0, len(chars[i])):
-                # & 0xFF is to decode UTF-8
-                if ord(chars[i][j]) & 0xFF:  # null characters don't count b/c they indicate no data, not all 0 bits
-                    # Loop through bits and apply confidence for true or false
-                    for k in range(0, 8):
-                        # if the last bit (e.g. 00001) is a 1:
-                        if (ord(chars[i][j]) >> k) & 1:
-                            # then add it to the bitstrue (or bitsfalse) bits with that bit's confidence level
-                            bitstrue[(j << 3) + k] += 1 * confidence[i]
-                        else:
-                            bitsfalse[(j << 3) + k] += 1 * confidence[i]
-        return bitstrue, bitsfalse
-
-    # takes a list of true bits and false bits and assembles characters from those lists
-    # TODO: this needs to limit confidences to a max of 9
-    @staticmethod
-    def assemble_chars(bitstrue, bitsfalse):
-        # the resultant averaged group of chars we get from the bits
-        avgchars = []
-        confidences = [0] * (len(bitstrue) >> 3)
-        # bitwise shift over 3 to keep int (divide by 8)
-        for i in range(0, len(bitstrue) >> 3):
-            # Assemble a character from the various bits
-            c = 0
-            for j in range(0, 8):
-                bit_weight = (bitstrue[(i << 3) + j] - bitsfalse[(i << 3) + j])
-                c |= (bit_weight > 0) << j
-                # confidences.append(abs(bit_weight))
-                confidences[i] += abs(bit_weight)
-            avgchars.append(chr(c))
-        return avgchars, confidences
-
     # Check the character against the space of possible characters and approximate the closest valid char
 
     '''
@@ -871,194 +518,158 @@ class MessageChunk:
     '-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀḖḀỻờ~ỿ'
     '''
 
-    # TODO: this should ONLY proc if we check county codes
-    @staticmethod
-    def check_fips(chunk, confidences, ixlist, candidate_fips):
-        recheck = []
-        matched1 = False
-        for ix in ixlist:
-            # chunk, confidences, matched = _reconcile_word(chunk, confidences, ix - 1, ['-'])
-            chunk, confidences, matched = _reconcile_word(chunk, confidences, ix,
-                                                          [(1.1, '0'), (1, '1'), (1, '2'), (1, '3'), (1, '4'),
-                                                           (1, '5'), (1, '6'), (1, '7'), (1, '8'), (1, '9')])
-            chunk, confidences, matched = _reconcile_word(chunk, confidences, ix + 1,
-                                                          [x[-5:] for x in candidate_fips])
-            matched1 |= matched
-            if matched:
-                if chunk[ix:ix + 6] in candidate_fips:
-                    candidate_fips.remove(chunk[ix:ix + 6])
-            else:
-                recheck.append(ix)
-        return chunk, confidences, matched1, recheck
 
-    @staticmethod
-    def approximate_chars(chars, confidences, bitstrue, bitsfalse, byte_pattern_index):
-        chars_to_return = []
-        confidences_to_return = []
-        # we need a separate counter just for this function so we don't get an IndexError
-        byte_pattern_counter = byte_pattern_index
-        for i in range(0, len(chars)):
-            c = chars[i]
-            # pass in the groups of confidences that correspond to the char in chars[i]
-            byte_confidence = confidences[i]
-            # TODO: this isn't being incremented
-            pattern = _SAME_CHARS[byte_pattern_counter]
-            # Where the pattern can repeat (e.g. county codes), multipath supports both routes
-            multipath = None
-            if type(pattern) is int:
-                multipath = pattern
-                pattern = _SAME_CHARS[byte_pattern_index + multipath] + _SAME_CHARS[
-                    byte_pattern_index + 1]
-            if c not in pattern:
-                # That was ugly.  Now find the closest legitimate character
-                byte_confidence, c = _reconcile_character(bitstrue[i * 8:(i + 1) * 8],
-                                                          bitsfalse[i * 8:(i + 1) * 8], pattern)
-                # It will get shifted back in a moment
-                byte_confidence <<= 3
-            if not multipath:
-                # TODO: fix this so it doesn't increment past 39
-                byte_pattern_counter += 1
-            else:
-                if c in _SAME_CHARS[byte_pattern_index + 1]:
-                    byte_pattern_counter += 2
-                else:
-                    byte_pattern_counter += multipath + 1
-            chars_to_return.append(c)
-            confidences_to_return.append(min(9, byte_confidence >> 3))
-        return chars_to_return, confidences_to_return, byte_pattern_index
-
-
-def average_message(headers, transmitter):
-    """
-    Compute the correct message by averaging headers, restricting input to the valid character set, and filling
-    in expected values when it's unambiguous based on other parts of the message.
-
-    :param headers: an array of tuples, each containing a string message, an array (or string) of confidence values, 
-    and a timestamp.
-    The complete message is assumed to be as long as the longest message, and messages align at the start.
-    :return: a tuple containing a single string corresponding to the most certain available data, and
-             the combined confidence for each character (range 1-9)
-    """
-    # This implementation undertakes several steps
-    # 1. Compute the best 2 out of 3 for every bit, weighted by confidence
-    # 2. Compute the confidence of each byte (agreeing confidences - disagreeing confidences)
-    # 3. Figure out what the length is by looking at sentinel characters
-    # 4. Lay down all the sentinel characters
-    # 5. Check that characters are in the valid set for the section of the message
-    # 6. Substitute any low-confidence data with data from the list of possible values
-
-    # header will contain our best of 3 string, computed bitwise, and we'll improve on that as we go.
-    # TODO make null characters \u0000 so they will have 0 confidence
-    # TODO compare confidence to 0
-    # TODO move this into SAMEMessage
-    header = ConfidentString(headers[0][0], headers[0][1])
-    for h in headers[1:]:
-        header &= ConfidentString(h[0], h[1])
-
-    # Find the length, set the sentinel characters
-    header = header.closest(_SHELL_CANDIDATES)
-    header = header[:header.index('+') + len(_END_SEQUENCE)]
-
-    # TODO look for the right codes
-
-    candidates = []
-    for l in range(38, len(avgmsg) + 1, 7):
-        candidates.append((_word_distance(avgmsg[l - 23:l], confidences, _END_SEQUENCE, '_'), l))
-
-    winner = min(candidates)
-    l = winner[1]
-    avgmsg = avgmsg[0:l]
-    confidences = confidences[0:l]
-
-    # init
-    confidences = []
-    byte_pattern_index = 0
-    avgmsg = []
-    valid_code = None
-    valid_times = []
-    for weight, offset in ((.5, -4), (.7, -3), (.9, -2), (1.1, -1), (1, 0)):
-        valid_times.append((weight, time.strftime('%j%H%M', time.gmtime(headers[0][2] + 60 * offset))))
-    # get FIPS codes (which, in some non-weather types of messages, may not be FIPS)
-    try:
-        candidate_fips = list(get_counties(transmitter))
-    except KeyError:
-        candidate_fips = []
-    # get transmitter codes
-    try:
-        wfo = [get_wfo(transmitter)]
-    except KeyError:
-        wfo = []
-
-    valid_code_list = [_DURATION_NUMBERS, _EVENT_CODES, _ORIGINATOR_CODES, valid_times,
-                       tuple([x[1] for x in _EVENT_TYPES]), wfo]
-    valid_code_list = [x for x in valid_code_list for x in x]
-
-    # First, break up the message into its component parts
-    for i in headers:
-        msg = i[0]
-        con = i[1]
-        split = split_message(msg, con)
-        split_msg = split[0]
-        split_con = split[1]
-        i[0] = split_msg
-        i[1] = split_con
-        fips_counter = split[2]
-
-    # [originator_code, event_code, location_codes, purge_time, exact_time, callsign]
-
-    # HEADERS:
-    '''
-    [['WḀR', 'SVR', ['0Ḁ7183', '0Ḁ7122'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
-    [[3, 3, 3], [3, 3, 3], [[3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 2]]]
-    [['WḀR', 'SVR', ['0Ḁ7183', '0Ḁ7122'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
-    [[3, 3, 3], [3, 3, 3], [[3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 3]]]
-    [['WḀR', 'SVR', ['0Ḁ7183', '0Ḁ7122'], '00Ḁ5', '12320Ḁ3', 'KRAH/NWS'],
-    [[3, 3, 3], [3, 3, 3], [[2, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3]], [3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 3]]]
-    '''
-
-    # main loop
-    # length of the broken up message
-    for i in range(0, len(headers[0][0])):
-        # Check if we have valid codes already
-        # TODO: improve this so it doesn't check every code against every part of the message (use dict?)
-        # [WXR, WAR, WRR]
-        # we need to slice off the delimiters before we check for valid codes
-        valid_code = check_if_valid_code([code[0][i][1:] for code in headers], valid_code_list)
-        # if it's valid, add it to our final message
-        if valid_code:
-            avgmsg += headers[i][0][i]
-            for i in range(0, len(valid_code)):
-                confidences.append(9)
-                byte_pattern_index += 1
-            valid_code = None
-            continue
-            # if it's not valid, we have to approximate
-        else:
-            '''
-            this is a triplet of each message chunk from each of the three messages, e.g. [WGV, WG%, W%!]
-            [('WXR', [3, 3, 3]), ('WXR', [3, 3, 3]), ('WXR', [3, 3, 3])]
-            '''
-            msg_con = list(zip([c[0][i] for c in headers], [c[1][i] for c in headers]))
-            # ['WXR', 'WXX', 'WXR']
-            msgs = [c[0] for c in msg_con]
-            print(msgs)
-            # [[3, 3, 3,], [3, 3, 3], [3, 2, 3]]
-            cons = [c[1] for c in msg_con]
-            chunk = MessageChunk(msgs, cons, byte_pattern_index, transmitter, fips_counter, valid_times)
-            # keep track of what chars we are comparing against
-            byte_pattern_index = chunk.byte_confidence_index
-            # add chars and confidences to final lists
-            # TODO: fix this so it only adds one chunk, not three
-            avgmsg += chunk.chars
-            for con in chunk.confidences:
-                confidences.append(min(9, con))
-
-    print(confidences)
-    return unicodify(avgmsg), confidences[0:len(avgmsg)]
-
+# CLEAN: -WXR-TOR-039173-039051-139069+0030-1591829-KCLE/NWS
+# DIRTY: -WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀḖḀỻờ~ỿ
+__ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+__NUMERIC = '0123456789'
+_PRINTABLE = '\x10\x13' + "".join(filter(lambda x: ord(x) != 43 and ord(x) != 45, [chr(x) for x in range(33, 127)]))
+_SAME_CHARS = [
+    '-', 'ECWP', 'AIXE', 'SVRP', '-', __ALPHA, __ALPHA, __ALPHA, '-',
+    _PRINTABLE, _PRINTABLE, _PRINTABLE, _PRINTABLE, _PRINTABLE, _PRINTABLE, -7,
+    '+', __NUMERIC, __NUMERIC, '0134', '05', '-',
+    '0123', __NUMERIC, __NUMERIC, '012', __NUMERIC, '012345', __NUMERIC, '-',
+    __ALPHA, __ALPHA, __ALPHA, __ALPHA, '/', 'N', 'W', 'S', '-'
+]
 
 # -WXR-TOR-039173-039051-139069+0030-1591829-KCLE/NWS
 SAME_PATTERN = re.compile('-(EAS|CIV|WXR|PEP)-([A-Z]{3})((?:-\\d{6})+)\\+(\\d{4})-(\\d{7})-([A-Z/]+)-?')
+
+
+class SAMEHeader(ConfidentString, tuple):
+    """
+    Contain a single instance of the message sent from the radio, or
+    the result of aggregation with another instance.
+    Responsibilities:
+    Combine with other SAMEHeaders
+    Know its time received (in case of combination, that's the first time
+    Know its ConfidentString
+    """
+    __slots__ = []
+
+    def __new__(cls, data=None, confidence=None, received_time=None):
+        """
+        :param data: A ConfidentString or String of characters from the radio
+        :param confidence: If data is a String, the string (or numeric array) of confidences for the data
+        :param time: The time this header was fully received
+        """
+        if isinstance(data, SAMEHeader) and confidence is None and received_time is None:
+            return data
+
+        if isinstance(data, ConfidentString):
+            if confidence is not None:
+                raise ValueError("Confidence should not be specified in conjunction with a ConfidentString")
+        else:
+            data = ConfidentString(data, confidence)
+
+        if received_time is None:
+            received_time = time.time()
+
+        return tuple.__new__(cls, (data.data, received_time))
+
+    @property
+    def time(self):
+        return tuple.__getitem__(self, 1)
+
+    def __add__(self, other):
+        """Concatenation"""
+        raise NotImplemented()
+
+    def __and__(self, other):
+        """Combining"""
+        if isinstance(other, SAMEHeader):
+            return SAMEHeader(ConfidentString.__and__(self, other), received_time=min((self.time, other.time)))
+        elif isinstance(other, ConfidentString):
+            return SAMEHeader(ConfidentString.__and__(self, other), received_time=self.time)
+        else:
+            raise ValueError("Can't and with %s" % other.__class__.__name__)
+
+
+# For sequences, we define what characters are expected in certain positions in the string.
+# We don't want to specify most characters yet - that will come.  But first we'll specify
+# The shape of the message, and leave blank (\u0000) characters that could be anything.
+_END_SEQUENCE = "+0___-_______-____/NWS-".replace('_', '\u0000')
+_START_SEQUENCE = "-___-___".replace('_', '\u0000')
+_COUNTY_SEQUENCE = "-______".replace('_', '\u0000')
+# The shell candidates are the shape of the message, which only varies based on the number of county codes.
+# The shell is padded at the end because sometimes the string from the radio has a few characters of
+# noise after the message, and those should not penalize the sequence for not matching.
+_SHELL_CANDIDATES = [_START_SEQUENCE + _COUNTY_SEQUENCE * c + _END_SEQUENCE + '\u0000' * 9 for c in range(1, 32)]
+
+
+class SAMEMessageScrubber(object):
+    """
+    Responsibilities:
+    * Identify the correct length of a message (and correct those characters)
+    * Adjust characters that aren't legit and also aren't far off from the spec
+    * Know the
+    Collaborations:
+    * SAMEMessage calls this with some headers
+    * ConfidentString
+    """
+
+    def __init__(self, headers, counties=None):
+        """
+        :param headers: An iterable of ConfidentStrings based on the headers
+        """
+        self.headers = headers
+        msg = SAMEHeader(headers[0])
+        if len(headers) > 1:
+            for i in range(1, len(headers)):
+                h = headers[i]
+                if not isinstance(h, SAMEHeader):
+                    h = SAMEHeader(h)
+                msg &= h
+
+        # self.message will contain our best of 3 string, computed bitwise, and we'll improve on that as we go.
+        self.message = msg
+        self.counties = counties
+
+    def fix_length(self):
+        # Find the length, set the sentinel characters
+        msg = self.message.closest(_SHELL_CANDIDATES)
+        self.message = msg[:msg.index('+') + len(_END_SEQUENCE)]
+
+    def sub_valid_codes(self, offset, choices):
+        if isinstance(choices[0], str):
+            first_choice = choices[0]
+        else:
+            first_choice = choices[0][1]  # assuming tuple with weight first
+        # All the choices have to be the same length or it doesn't make sense.
+        msg_word = self.message[offset:offset + len(first_choice)]
+        clean_word = msg_word.closest(choices)
+        if msg_word != clean_word:
+            self.message = self.message[0:offset] + clean_word + self.message[offset + len(clean_word):]
+
+    def scrub(self):
+        self.fix_length()
+        self.sub_valid_codes(1, _ORIGINATOR_CODES)
+        self.sub_valid_codes(5, _EVENT_CODES)
+        plus_ix = self.message.index('+')
+        self.sub_valid_codes(plus_ix + 1, _DURATION_NUMBERS)
+
+        # Prefer times near to now
+        valid_times = []
+        for weight, offset in ((.5, -4), (.7, -3), (.9, -2), (1.1, -1), (1, 0)):
+            valid_times.append(
+                (weight, time.strftime('%j%H%M', time.gmtime(self.message.time + 60 * offset))))
+
+        self.sub_valid_codes(plus_ix + 6, valid_times)
+
+        # Substitute for counties with known set or unknown sets
+        if self.counties is None:
+            pc = list(_PRINTABLE)
+            for i in range(10, plus_ix, 7):
+                for j in range(0, 7):
+                    self.sub_valid_codes(i + j, pc)
+        else:
+            weighted_counties = [(1-(cx/48.0), self.counties[cx]) for cx in range(0, len(self.counties))]
+            for i in range(10, plus_ix, 7):
+                self.sub_valid_codes(i, weighted_counties)
+                while len(weighted_counties) > 0 and weighted_counties[0][0] != str(self[i:6]):
+                    weighted_counties.pop(0)
+
+        return self.message
 
 
 class SAMEMessage(CommonMessage):
@@ -1095,14 +706,16 @@ class SAMEMessage(CommonMessage):
         if headers:
             if hasattr(headers, 'lower'):
                 self.headers = None
-                self.__avg_message = (headers, '9' * len(headers))
+                self.__avg_message = ConfidentString(headers, [9] * len(headers))
                 self.start_time = time.time()
                 self.start_time = self.get_start_time_sec()
                 self.timeout = float("-inf")
-                event_id = self.__avg_message[0]
+                event_id = str(self.__avg_message)
             else:
+                if not all(isinstance(x, SAMEHeader) for x in headers):
+                    raise ValueError("Only SAMEHeaders or a single string can be in header")
                 self.headers = headers
-                self.start_time = headers[0][2]
+                self.start_time = headers[0].time
                 self.timeout = self.start_time + 6
         else:
             self.headers = []
@@ -1114,16 +727,12 @@ class SAMEMessage(CommonMessage):
             event_id = "%s-%.3f" % (self.transmitter, self.start_time)
         self.event_id = event_id
 
-    def add_header(self, header, confidence):
+    def add_header(self, header):
         if self.fully_received():
             raise ValueError("Message is already complete.")
-        when = time.time()
-        try:
-            confidence[0] + 'a'
-        except TypeError:
-            confidence = "".join([str(x) for x in confidence])
-        self.headers.append((unicodify(header), confidence, when))
-        self.timeout = when + 6
+        if not isinstance(header, SAMEHeader):
+            raise ValueError("Only SAMEHeaders belong")
+        self.timeout = header.time + 6
 
     def get_areas(self):
         return self.get_counties()

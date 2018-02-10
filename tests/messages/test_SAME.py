@@ -34,20 +34,20 @@ class TestConfidentCharacter(unittest.TestCase):
         c1 = ConfidentCharacter('W', 3)
         self.assertEqual('W', c1.char)
         self.assertEqual(3, c1.confidence)
-        self.assertEqual([3] * 8, c1.bitwise_confidence)
+        self.assertEqual((3,) * 8, c1.bitwise_confidence)
 
         c2 = ConfidentCharacter('W', 3)
         self.assertEqual(c1, c2)
         self.assertEqual(ConfidentCharacter('W', 6), c1 & c2)
 
         c3 = ConfidentCharacter('V', 3)
-        self.assertEqual(ConfidentCharacter('W', bitwise_confidence=[3, 9, 9, 9, 9, 9, 9, 9]), c1 & c2 & c3)
+        self.assertEqual(ConfidentCharacter('W', confidence=[3, 9, 9, 9, 9, 9, 9, 9]), c1 & c2 & c3)
 
         c4 = ConfidentCharacter(chr(0), 0)
         self.assertEqual(c1, c1 & c4)
 
         x = ConfidentCharacter('X', 3) & ConfidentCharacter('V', 2)
-        self.assertEqual([5, 1, 1, 1, 5, 5, 5, 5], x.bitwise_confidence)
+        self.assertEqual((5, 1, 1, 1, 5, 5, 5, 5), x.bitwise_confidence)
 
     def testConfidenceDistance(self):
         c1 = ConfidentCharacter('W', 3)
@@ -55,7 +55,7 @@ class TestConfidentCharacter(unittest.TestCase):
 
     def testOverride(self):
         c1 = ConfidentCharacter('W', 3)
-        self.assertEqual(ConfidentCharacter('V', bitwise_confidence=[0, 3, 3, 3, 3, 3, 3, 3]), c1.override_with('V'))
+        self.assertEqual(ConfidentCharacter('V', confidence=[0, 3, 3, 3, 3, 3, 3, 3]), c1.override_with('V'))
 
 
 class TestConfidentString(unittest.TestCase):
@@ -77,12 +77,22 @@ class TestConfidentString(unittest.TestCase):
         r = ConfidentCharacter('R', 1)
         wxr = w + x + r
         self.assertEqual("WXR", str(wxr))
-        self.assertEqual([3, 3, 1], wxr.get_confidence())
-        self.assertEqual([5, 1, 1, 1, 5, 5, 5, 5], wxr[1].bitwise_confidence)
+        self.assertEqual((3, 3, 1), wxr.confidence)
+        self.assertEqual((5, 1, 1, 1, 5, 5, 5, 5), wxr[1].bitwise_confidence)
 
     def testOverride(self):
         cs = ConfidentString("NWS", [3, 3, 3])
         self.assertEqual(repr(ConfidentString("WWR", [1, 3, 2])), repr(cs.override_with("W\u0000R")))
+
+        cs = ConfidentString('-E\x00S-RWT', [2, 1, 2, 3, 2, 2, 1, 2])
+        shell_pattern = "-___-___-______+0___-_______-____/NWS-".replace('_', '\u0000')
+        self.assertEqual('-E_S-RWT-______+0___-_______-____/NWS-'.replace('_', '\u0000'),
+                         str(cs.override_with(shell_pattern)))
+        self.assertEqual((2, 1, 0, 3, 2, 2, 1, 2, 2, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0,
+                          0, 0, 0, 2, 2, 2, 2, 2), cs.override_with(shell_pattern).confidence)
+        short_shell = '-___-'.replace('_', '\u0000')
+        self.assertEqual('-E\u0000S-', str(cs.override_with(short_shell)))
+        self.assertEqual((2, 1, 0, 3, 2), cs.override_with(short_shell).confidence)
 
     def testDistanceToString(self):
         cs = ConfidentString("Lolly", [3] * 5)
@@ -104,15 +114,15 @@ class TestConfidentString(unittest.TestCase):
         self.assertEqual(0, cs.confidence_distance_to('Foo\u0000'))
 
     def testReturnNearest(self):
-        cs = ConfidentCharacter('W', 3) + ConfidentCharacter(chr(0x00), 0) + ConfidentCharacter('R', 3)
+        cs = ConfidentString("W\u0000R", [3, 0, 3])
         closest = cs.closest(['WXR', 'CIV', 'EAS', 'PEP'])
         self.assertEqual('WXR', str(closest))
-        self.assertEqual([3, 0, 3], closest.get_confidence())
+        self.assertEqual((3, 3, 3), closest.confidence)
 
         cs = ConfidentString('WAR', [3, 2, 3])
         closest = cs.closest(['WXR', 'CIV', 'EAS', 'PEP'])
         self.assertEqual('WXR', str(closest))
-        self.assertEqual([3, 1, 3], closest.get_confidence())
+        self.assertEqual((3, 1, 3), closest.confidence)
 
         cs = ConfidentString('WXR', [3, 3, 3])
         self.assertEqual(ConfidentString('WXR', [3, 3, 3]), cs.closest(['W\u0000R', 'WVR']))
@@ -148,6 +158,60 @@ class TestConfidentString(unittest.TestCase):
             cs.index(cs[0:2].index('R'))
         self.assertEqual(2, len(cs[1:3]))
 
+        self.assertEqual(ConfidentString('', []), cs[0:0])
+
+
+class TestSAMEMessageScrubber(unittest.TestCase):
+    def test_constructor(self):
+        headers = [ConfidentString('-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀ6ḀỿỨỼỿ',
+                                   '33333333333333333333333333333323333333333000000'),
+                   ConfidentString('-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀjḀẻẜẓỿ',
+                                   '33333333333333333333333333333333333333333000000'),
+                   ConfidentString('-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀḖḀỻờ~ỿ',
+                                   '33333323333333333333333333333333333333333000000')]
+
+        ms = SAMEMessageScrubber(headers)
+        expected = ConfidentString('-W R-SVR-0 7183+00 5-12320 3-KRAH/ WS-         '.replace(' ', '\u0000'),
+                                   '99099989990999999909999999099989990999000000000')
+        self.assertEqual(expected, ms.message)
+
+        self.assertEqual(headers[1], SAMEMessageScrubber(headers[1:2]).message)
+
+    def test_fix_length(self):
+        # Sometimes messages come in partial, like in this bad reception example
+        messages = [ConfidentString(msg, conf) for msg, conf in [
+            ('-E\x00S-RWT', [2, 1, 2, 3, 2, 2, 1, 2]),
+            ('-E\x00S-RWT-0\x007183+', [3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 3, 3, 2, 3, 2, 3]),
+            ('-E\x00S-RWT-0\x007183+', [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3])
+        ]]
+        scrubber = SAMEMessageScrubber(list(messages))
+        scrubber.fix_length()
+
+        # Fix the length to the most appropriate length, and all the null characters have 0 confidence, as do
+        # those that were filled in afterward.
+        self.assertEqual('-E_S-RWT-0_7183+0___-_______-____/NWS-'.replace('_', '\u0000'),
+                         str(scrubber.message))  # ^^ read that
+        confidence = scrubber.message.confidence
+        self.assertEqual(tuple([int(x) for x in '87098878550656466000600000006000066666']), confidence)
+
+    def test_sub_valid_codes(self):
+        msg = ConfidentString("-WFR-RWT-", [7] * 9)
+        ms = SAMEMessageScrubber([msg])
+        ms.sub_valid_codes(1, ["WXR", "CIV", "EAS", "PEP"])
+        confidence = [7] * 9
+        confidence[2] = [7, 0, 0, 0, 0, 7, 7, 7]
+        self.assertEqual(ConfidentString("-WXR-RWT-", confidence), ms.message)
+
+    def test_sub_weighted_codes(self):
+        msg = ConfidentString("2020239", [7] * 7)
+        ms = SAMEMessageScrubber([msg])
+        ms.sub_valid_codes(0, [(.8, "2020236"), (.9, "2020237"), (.95, "2020238"), (1, "2020239"), (.8, "2020240")])
+        self.assertEqual(ConfidentString("2020239", [7] * 7), ms.message)
+
+        msg = ConfidentString("2020238", [7, 7, 7, 7, 7, 7, 0])
+        ms = SAMEMessageScrubber([msg])
+        ms.sub_valid_codes(0, [(.8, "2020236"), (.9, "2020237"), (.95, "2020238"), (1, "2020239"), (.75, "2020240")])
+        self.assertEqual(ConfidentString("2020239", [7, 7, 7, 7, 7, 7, 0]), ms.message)
 
 class TestSAME(unittest.TestCase):
     @staticmethod
@@ -251,19 +315,6 @@ class TestSAME(unittest.TestCase):
         for i in range(0, len(clear_message)):
             if clear_message[i] != msg[i]:
                 self.assertTrue(confidence[i] < 3, "%s != %s (%d)" % (clear_message[i], msg[i], confidence[i]))
-
-    def testDifferentLengths(self):
-        # Sometimes messages come in partial, like in this bad reception example
-        messages = TestSAME.add_time([('-E\x00S-RWT', [2, 1, 2, 3, 2, 2, 1, 2]),
-                                      ('-E\x00S-RWT-0\x007183+', [3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 3, 3, 2, 3, 2, 3]),
-                                      ('-E\x00S-RWT-0\x007183+', [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3])],
-                                     time.time())
-        (msg, confidence) = average_message(messages, "WXL58")
-        # The next assertion is not prescriptive as to how to handle the null FIPS character.  It might rightly be
-        # substituted because every value from the possibilities is 3, and there is no confidence lost by substitution.
-        self.assertEquals('-EAS-RWT-0⨀7183+', msg)  # ^^ read that
-        self.assertEquals(8, confidence[2])  # It's been fixed and verified by the adjacent 2 characters
-        self.assertTrue(confidence[10] < 3)
 
     def test_reconcile_word(self):
         w, c, d = SAME._reconcile_word("dug", "939", 0, ["dog", "cat", "fly", "pug"])
