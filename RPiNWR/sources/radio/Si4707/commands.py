@@ -401,7 +401,7 @@ class SameInterruptCheck(InterruptHandler):
                     conf.extend(st["CONFIDENCE"])
                 msg = msg[0:msg_len + 1]
                 conf = conf[0:msg_len + 1]
-                radio.same_message.add_header(SAME.SAMEMessage("".join([chr(c) for c in msg]), conf))
+                radio.same_message.add_header(SAME.SAMEHeader("".join([chr(c) for c in msg]), conf, time.time()))
                 self.__get_status(radio, clearbuf=True)
                 radio._fire_event(SAMEHeaderReceived(radio.same_message))
 

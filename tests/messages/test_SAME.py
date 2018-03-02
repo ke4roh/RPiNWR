@@ -117,7 +117,7 @@ class TestConfidentString(unittest.TestCase):
         cs = ConfidentString("W\u0000R", [3, 0, 3])
         closest = cs.closest(['WXR', 'CIV', 'EAS', 'PEP'])
         self.assertEqual('WXR', str(closest))
-        self.assertEqual((3, 3, 3), closest.confidence)
+        self.assertEqual((3, 2, 3), closest.confidence)
 
         cs = ConfidentString('WAR', [3, 2, 3])
         closest = cs.closest(['WXR', 'CIV', 'EAS', 'PEP'])
@@ -126,6 +126,14 @@ class TestConfidentString(unittest.TestCase):
 
         cs = ConfidentString('WXR', [3, 3, 3])
         self.assertEqual(ConfidentString('WXR', [3, 3, 3]), cs.closest(['W\u0000R', 'WVR']))
+
+        # Stipulate a threshold if there might be other possibilities
+        cs = ConfidentString('CART', [3,3,3,3])
+        self.assertEqual(ConfidentString('CART', [3, 3, 3, 3]), cs.closest(['FING','SHUI'], 3))
+
+        cs = ConfidentString("125021\u0000", [9]*7)
+        valid_times = (.9, "1250216"), (1.1, "1250217"), (1, "1250218")
+        self.assertEqual(ConfidentString('1250217', [9, 9, 9, 9, 9, 9, 7]), cs.closest(valid_times))
 
     def testAnd(self):
         cs = ConfidentString('WXR', [3, 3, 3]) & ConfidentString('W\x00R', [3, 0, 3])
@@ -177,6 +185,38 @@ class TestSAMEMessageScrubber(unittest.TestCase):
 
         self.assertEqual(headers[1], SAMEMessageScrubber(headers[1:2]).message)
 
+    def test_scrub_counties(self):
+        def makeScrubber(header_str, confidence_str):
+            header = SAMEHeader(header_str, confidence_str)
+            return SAMEMessageScrubber(headers=[header], transmitter="WXL58")
+
+        ms = makeScrubber('-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀ6ḀỿỨỼỿ',
+                     '33333333333333333333333333333323333333333000000')
+        self.assertEqual("+", str(ms.message[15]))
+        ms.sub_counties(15)
+
+        self.assertEqual("037183", str(ms.message[9:15]))
+        self.assertEqual("-", str(ms.message[8]))
+        self.assertEqual("+", str(ms.message[15]))
+
+        # Multiple counties
+        ms = makeScrubber(
+            "-WḀR-SVR-0Ḁ7001-03Ḁ151+010Ḁ-123202Ḁ-KRAH/NḀS-ḀḀḀỺỳḀẩỠ/ỿ",
+            "3333333233333333332332333333333333333333333333330000000",
+        )
+        self.assertEqual("+", str(ms.message[22]))
+        ms.sub_counties(22)
+        self.assertEqual("037001-037151", str(ms.message[9:22]))
+
+        # The spec says these can also be any printable characters.
+        ms = makeScrubber('-WḀR-SVR-FIZZLE+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀ6ḀỿỨỼỿ',
+                            '33333333333333333333333333333323333333333000000')
+        ms.sub_counties(15)
+        self.assertEqual("FIZZLE", str(ms.message[9:15]))
+
+
+
+
     def test_fix_length(self):
         # Sometimes messages come in partial, like in this bad reception example
         messages = [ConfidentString(msg, conf) for msg, conf in [
@@ -212,6 +252,7 @@ class TestSAMEMessageScrubber(unittest.TestCase):
         ms = SAMEMessageScrubber([msg])
         ms.sub_valid_codes(0, [(.8, "2020236"), (.9, "2020237"), (.95, "2020238"), (1, "2020239"), (.75, "2020240")])
         self.assertEqual(ConfidentString("2020239", [7, 7, 7, 7, 7, 7, 0]), ms.message)
+
 
 class TestSAME(unittest.TestCase):
     @staticmethod
@@ -302,43 +343,14 @@ class TestSAME(unittest.TestCase):
             TestSAME.add_noise(clear_message, noise)
         ], msg_time)
 
-    def testAverageMessage(self):
-        clear_message, messages = self.make_noisy_messages(.03)
-        msg, confidence = average_message(messages, "KID77")
-        self.assertEqual(clear_message, msg)
-        self.assertEqual(3, min(confidence))
-        self.assertEqual(9, max(confidence))
-
-    def testAverageMessageOfJunkHasLowConfidence(self):
-        clear_message, messages = self.make_noisy_messages(.05)
-        (msg, confidence) = average_message(messages, "KID77")
-        for i in range(0, len(clear_message)):
-            if clear_message[i] != msg[i]:
-                self.assertTrue(confidence[i] < 3, "%s != %s (%d)" % (clear_message[i], msg[i], confidence[i]))
-
-    def test_reconcile_word(self):
-        w, c, d = SAME._reconcile_word("dug", "939", 0, ["dog", "cat", "fly", "pug"])
-        self.assertEqual("dog", w)
-        self.assertEqual([9, 7, 9], c)
-
-        w, c, d = SAME._reconcile_word("030151", "992997", 0,
-                                       '037037-037063-037069-037077-037085-037101-037105-037125-037135-037145-037151-037181-037183-037185'.split(
-                                           '-'))
-        self.assertEqual("037151", w)
-        self.assertEqual(list([int(x) for x in "998997"]), c)
-
-        w, c, d = SAME._reconcile_word("037001-030151", "9999999992997", 7,
-                                       '037037-037063-037069-037077-037085-037101-037105-037125-037135-037145-037151-037181-037183-037185'.split(
-                                           '-'))
-        self.assertEqual("037151", w[7:])
-        self.assertEqual(list([int(x) for x in "998997"]), c[7:])
 
     def test_dirty_messages(self):
         logging.basicConfig(level=logging.INFO)
         messages = self.load_dirty_messages()
         for msg in messages:
             print(msg)
-            msg["calculated"] = average_message(msg["headers"], msg["transmitter"])
+            headers = [SAMEHeader(*h) for h in msg["headers"]]
+            msg["calculated"] = SAMEMessage(msg["transmitter"], headers)
 
             # TODO: Fix this issue and combine messages:
 
@@ -385,8 +397,11 @@ class TestSAME(unittest.TestCase):
 
             if "clean" in msg:
                 clean_message = msg["clean"]
-                c_msg = msg["calculated"][0]
-                confidence = msg["calculated"][1]
+                try:
+                    c_msg = str(msg["calculated"].get_SAME_message())
+                except AmbiguousSAMEMessage as e:
+                    self.fail(str(e) + "\n" + clean_message + "\n" + str(msg["calculated"].headers))
+                confidence = msg["calculated"].get_SAME_message().confidence
 
                 # Now, because this message was so dirty, let's assert a certain level of accuracy, which can be tuned upward
                 # as the average_message algorithm is improved.
@@ -627,220 +642,3 @@ class TestSAME(unittest.TestCase):
         self.assertTrue(default_SAME_sort(SAMEMessage("-CIV-FRW-037085-037101+0100-1250219-KRAH/NWS-"),
                                           SAMEMessage("-CIV-FRW-037085-037101+0130-1250218-KRAH/NWS-")) < 0)
 
-    def test_reconcile_character(self):
-        # D = 0100 0100
-        # L = 0100 1100
-        # M = 0100 1101
-        # and reconciling these 3 with equal weights should yeild L
-        # Easier to write with MSB first, then reverse
-        bitstrue = [0, 3, 0, 0, 2, 3, 0, 1]
-        bitsfalse = [3, 0, 3, 3, 1, 0, 3, 2]
-        bitstrue.reverse()
-        bitsfalse.reverse()
-        self.assertEqual((2, 'L'), SAME._reconcile_character(bitstrue, bitsfalse,
-                                                             'ABCDEFGHIJKLMNOPQRSTUVWXYZ'))
-
-    def test_check_if_valid_code(self):
-        test_codes = ['WXR', 'W^X', 'WXR']
-        test_codes_2 = ['&%$', 'T5+', 'XXX']
-        test_codes_3 = ['SVR', 'SVR', 'SVR']
-        test_valid_list = SAME._ORIGINATOR_CODES
-        test_valid_list_2 = SAME._EVENT_CODES
-        self.assertFalse(SAME.check_if_valid_code(test_codes, test_valid_list))
-        self.assertFalse(SAME.check_if_valid_code(test_codes_2, test_valid_list))
-        self.assertTrue(SAME.check_if_valid_code(test_codes_3, test_valid_list_2))
-
-    def test_split_message(self):
-
-        '''
-        '-WXR-RwVm03090;-0202p1-020091-02012\x11-02= <3-\x1029145-02)195-029037+0030-;0³170p-OGAX/FWS-'
-        "-GYR-RWT-02010³-021209-020891-°20121-029047-129165%029095-02¹037;\x100\x130-\x13031710,KE@X'ÎWS-"
-        '/WXR-ZWT-020±03-22020\x19-06°091-121121-°2904?/229145-p2909%-029037+0830-30;57 0mËEAXoNWS-'
-        '-WXR-RwVm03090;-0202p1-020091-02012\x11-02= <3-\x1029145-02)195-029037+0030-;0³170p-OGAX/FWS-'
-        "-GYR-RWT-02010³-021209-020891-°20121-029047-129165%029095-02¹037;\x100\x130-\x13031710,KE@X'ÎWS-"
-        '''
-
-        # setup
-        input_msg = '-WXR-SVR-037085-037101+0100-1250218-KRAH/NWS-'
-        input_confidences = [0] * len(input_msg)
-        input_msg_2 = '-WXR-RWT-020103-020209-020091-°20121-029047-029165%029095-029037;0030-3031710,KEAX\\\'ÎWS-'
-        input_confidences_2 = [0] * len(input_msg_2)
-
-        # expected values
-        expected_result = [['-WXR', '-SVR', '-037085', '-037101', '+0100', '-1250218', '-KRAH/NWS-'],
-                           [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
-                            [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]]
-        expected_result_2 = [['-WXR', '-RWT', '-020103', '-020209', '-020091', '-°20121', '-029047', '-029165',
-                              '-029095', '-029037', '+0030', '-3031710', '-KEAX/NWS-'],
-                             [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0],
-                              [0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0],
-                              [0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
-                              [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]]
-
-        # test
-        test_msg = SAME.split_message(input_msg, input_confidences)
-        test_msg_2 = SAME.split_message(input_msg_2, input_confidences_2)
-
-        # assert
-        self.assertEqual(test_msg, expected_result)
-        self.assertEqual(test_msg_2, expected_result_2)
-
-    def test_MessageChunk(self):
-
-        test_headers = [['-WḀR-SVR-0Ḁ7183-0Ḁ7182+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀ6ḀỿỨỼỿ',
-                         '33333333333333333333333333333323333333333000000',
-                         1462219406.538715],
-                        ['-WḀR-SVR-0Ḁ7183-0Ḁ7182+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀjḀẻẜẓỿ',
-                         '33333333333333333333333333333333333333333000000',
-                         1462219408.5504122],
-                        ['-WḀR-SVR-0Ḁ7183-0Ḁ7182+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀḖḀỻờ~ỿ',
-                         '33333323333333333333333333333333333333333000000',
-                         1462219410.5092943]]
-
-        split_headers = []
-        for msg, conf, ts in test_headers:
-            split_headers.append(SAME.split_message(msg, conf))
-
-        '''
-        HAVE:
-        [(['0Ḁ7183', '0Ḁ7182'], [[3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3]]), 
-        (['0Ḁ7183', '0Ḁ7182'], [[3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3]]), 
-        (['0Ḁ7183', '0Ḁ7182'], [[2, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3]])]
-        
-        WANT:
-        [c[0][0] for c in list] (msg 1)
-        [c[0][1] for c in list] (conf 1)
-        [c[1][0] for c in list] (msg 2)
-        [c[1][1] for c in list] (conf 2)
-        [(['0Ḁ7183', [3, 3, 3, 3, 3, 3]], ['0Ḁ7182', [3, 3, 3, 3, 3, 3]]),
-         (['0Ḁ7183', [3, 3, 3, 3, 3, 3]], ['0Ḁ7182', [3, 3, 3, 3, 3, 3]]),
-         (['0Ḁ7183', [3, 3, 3, 3, 3, 3]], ['0Ḁ7182', [3, 3, 3, 3, 3, 3]])]
-        '''
-
-        for i in range(0, len(split_headers[0][0])):
-            zipped_list = list(zip([c[0][i] for c in split_headers], [c[1][i] for c in split_headers]))
-            msg_list = [d[0] for d in zipped_list]
-            conf_list = [d[1] for d in zipped_list]
-            # print(msg_list, conf_list)
-            test_active_chunk = SAME.MessageChunk(msg_list, conf_list)
-            print(test_active_chunk.chars, test_active_chunk.confidences)
-
-        '''
-        zipped_list:
-        [('WḀR', [3, 3, 3]), ('WḀR', [3, 3, 3]), ('WḀR', [3, 3, 3])]
-        [('SVR', [3, 3, 3]), ('SVR', [3, 3, 3]), ('SVR', [3, 3, 3])]
-        [(['0Ḁ7183'], [[3, 3, 3, 3, 3, 3]]), (['0Ḁ7183'], [[3, 3, 3, 3, 3, 3]]), (['0Ḁ7183'], [[2, 3, 3, 3, 3, 3]])]
-        [('00Ḁ5', [3, 3, 3, 3]), ('00Ḁ5', [3, 3, 3, 3]), ('00Ḁ5', [3, 3, 3, 3])]
-        [('12320Ḁ3', [3, 3, 3, 3, 3, 3, 3]), ('12320Ḁ3', [3, 3, 3, 3, 3, 3, 3]), ('12320Ḁ3', [3, 3, 3, 3, 3, 3, 3])]
-        [('KRAH/NWS', [3, 3, 3, 3, 3, 3, 3, 2]), ('KRAH/NWS', [3, 3, 3, 3, 3, 3, 3, 3]), ('KRAH/NWS', [3, 3, 3, 3, 3, 3, 3, 3])
-        '''
-
-        test_chars = ['WGX', 'WWW', 'W$X']
-        test_confidences = [[0, 1, 2], [0, 0, 0], [9, 9, 9]]
-        test_chunk = SAME.MessageChunk(test_chars, test_confidences)
-        # print(test_chunk.chars, test_chunk.confidences)
-        self.assertEqual(test_chunk.chars, test_chars)
-        self.assertEqual(test_chunk.confidences, test_confidences)
-
-    def test_approximate_chars(self):
-        # init
-        bitstrue = [9, 9, 9, 0, 9, 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 9, 0, 9, 0]
-        bitsfalse = [0, 0, 0, 9, 0, 9, 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 9, 9, 0, 9, 0, 9]
-        byte_confidence_index = 0
-        chars1 = ['W', '\x00', 'R']
-        chars2 = ['S', 'V', 'R']
-        confidences1 = [72, 0, 72]
-        confidences2 = [72, 72, 72]
-        expected_chars1 = ['W', '\x00', 'R']
-        expected_chars2 = ['S', 'V', 'R']
-        expected_confidences1 = [9, 0, 9]
-        expected_confidences2 = [9, 9, 9]
-
-        # act
-        test_chars1, test_confidences1, byte_confidence_index = \
-            SAME.MessageChunk.approximate_chars(chars1, confidences1, bitstrue, bitsfalse, byte_confidence_index)
-        test_chars2, test_confidences2, byte_confidence_index = \
-            SAME.MessageChunk.approximate_chars(chars2, confidences2, bitstrue, bitsfalse, byte_confidence_index)
-
-        # assert
-        self.assertEqual(expected_chars1, test_chars1)
-        self.assertEqual(expected_confidences1, test_confidences1)
-        self.assertEqual(expected_chars2, test_chars2)
-        self.assertEqual(expected_confidences2, test_confidences2)
-
-    def test_check_fips(self):
-        # get FIPS codes (which, in some non-weather types of messages, may not be FIPS)
-        try:
-            candidate_fips = list(get_counties('WXL58'))
-        except KeyError:
-            candidate_fips = []
-        chars = ['0', '3', '7', '0', '7', '7']
-        confidences = [0, 0, 0, 0, 0, 0]
-        ix = range(len(chars))
-        fips_check = SAME.MessageChunk.check_fips(chars, confidences, ix, candidate_fips)
-        print(fips_check)
-        assert fips_check == (''.join(chars), confidences, True, [1, 2, 3, 4, 5])
-
-    def test__truncate(self):
-
-        # NOTES:
-        # for random data, stipulate random number seed
-        # split all of these into separate tests (organize by similar trains of thought)
-        # make message generation setup into its own method
-        # put expected and test msg next to each other, add to array as tuples
-
-        # setup
-        test_msg = self.make_noisy_messages(.03)
-        test_msg_2 = self.make_noisy_messages(.05)
-
-        # make a random message that's too short by one character (we want our messages to be 38 or higher to be valid)
-        short_msg = [c for c in random.sample(string.ascii_letters, 37)]
-        test_msg_short = self.add_noise(short_msg, 0)
-        long_msg = '-GYR-RWT-02010³-021209-020891-°20121-029047-129165%029095-02¹037;00-031710,KE@X\'ÎWS-asdada2983918**!@*#@&%#$&%#*asddddddddddddJJJJJJJJJJJJJJJJJJ'
-        test_msg_long = self.add_noise(long_msg, 0)
-
-        # TEST LIST
-        test_list = ['-WXR-RwVm03090;-0202p1-020091-02012\x11-02= <3-\x1029145-02)195-029037+0030-;0³170p-OGAX/FWS-',
-                     "-GYR-RWT-02010³-021209-020891-°20121-029047-129165%029095-02¹037;\x100\x130-\x13031710,KE@X'ÎWS-",
-                     '/WXR-ZWT-020±03-22020\x19-06°091-121121-°2904?/229145-p2909%-029037+0830-30;57 0mËEAXoNWS-',
-                     '-WXR-RwVm03090;-0202p1-020091-02012\x11-02= <3-\x1029145-02)195-029037+0030-;0³170p-OGAX/FWS-',
-                     "-GYR-RWT-02010³-021209-020891-°20121-029047-129165%029095-02¹037;\x100\x130-\x13031710,KE@X'ÎWS-"]
-        '''
-        for i in test_list:
-            noisy = self.add_noise(i, 0)
-            truncated = SAME._truncate(noisy[0], noisy[1])
-            print(truncated)
-        '''
-
-        # strip out just the message string from the tuple of transmitter, confidences, message
-        test_avgmsg = [i for i in test_msg[1][1][0]]
-        test_avgmsg_2 = [i for i in test_msg_2[1][1][0]]
-        test_avgmsg_long = [i for i in test_msg_long[0]]
-
-        # the messages we're expecting to be outputted from __truncate
-        expected_message = '-WXR-RWT-020103-020209-020091-°20121-029047-029165-029095-029037+0030-3031710-KEAX/NWS-'
-        expected_message_2 = '-GYR-RWT-02010³-021209-020891-°20121-029047-129165-029095-02¹037+000-031710-KE@X/NWS-'
-        expected_message_long = '-GYR-RWT-02010³-021209-020891-°20121-029047-129165-029095-02¹037+000-031710-KE@X/NWS-'
-        expected_message_short = ''.join(short_msg)
-
-        # testing
-        test_truncate = SAME._truncate(test_avgmsg, test_msg[1][1][1])
-        test_truncate_2 = SAME._truncate(test_avgmsg_2, test_msg_2[1][1][1])
-        test_truncate_long = SAME._truncate(test_avgmsg_long, test_msg_long[1])
-        test_truncate_short = SAME._truncate(short_msg, test_msg_short[1])
-
-        '''
-        for i in [test_truncate, test_truncate_2, test_truncate_long]:
-            print(i)
-        '''
-
-        # assert
-        print(''.join(test_truncate[0]))
-        print(test_truncate[0])
-        self.assertEqual(''.join(test_truncate[0]), expected_message)
-        self.assertEqual(''.join(test_truncate_2[0]), expected_message_2)
-        self.assertEqual(''.join(test_truncate_long[0]), expected_message_long)
-
-        # test length
-        self.assertTrue(len(test_truncate_short[0]) == 37)
-        self.assertEqual(''.join(test_truncate_short[0]), expected_message_short)

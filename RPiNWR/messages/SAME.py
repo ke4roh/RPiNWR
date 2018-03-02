@@ -28,6 +28,7 @@ from collections import Sequence
 import itertools
 from .CommonMessage import CommonMessage
 from ..sources.radio.nwr_data import get_counties, get_wfo
+from statistics import median
 
 # See http://www.nws.noaa.gov/directives/sym/pd01017012curr.pdf
 # also https://www.gpo.gov/fdsys/pkg/CFR-2010-title47-vol1/xml/CFR-2010-title47-vol1-sec11-31.xml
@@ -167,6 +168,9 @@ class ConfidentCharacter(tuple):
     def __repr__(self):
         return '<ConfidentCharacter \'%s\' %s>' % (self.char, str(self.bitwise_confidence))
 
+    def __str__(self):
+        return self.char
+
     def __and__(self, other):
         how_true = self.get_bit_confidences()
         other_how_true = other.get_bit_confidences()
@@ -243,9 +247,11 @@ class ROSlice(Sequence, tuple):
         if stop < 0:
             stop += len(alist)
         if stop > len(alist):
-            raise IndexError
+            raise IndexError("start > len")
         if start > len(alist):
-            raise IndexError
+            raise IndexError("start < len")
+        if stop < start:
+            raise IndexError("start < stop")
         return tuple.__new__(cls, (alist, start, stop))
 
     @property
@@ -455,7 +461,7 @@ class ConfidentString(Sequence, tuple):
         for i in range(0, len(d)):
             if valid_str[i] != '\u0000':
                 d[i] = d[i].override_with(valid_str[i])
-                if len(self) > i and self[i].char != '\u0000':
+                if len(self) > i: # and self[i].char != '\u0000':
                     confidence_sum += d[i].confidence
                     confidence_count += 1
 
@@ -468,11 +474,13 @@ class ConfidentString(Sequence, tuple):
 
         return ConfidentString(d)
 
-    def closest(self, possibilities):
+    def closest(self, possibilities, max_distance=float("inf")):
         """
 
         :param possibilities: Either a list of str OR a list of tuples of (weight, str).  All strings must be
         the same length.
+        :param max_distance: The maximum distance, per character, by which strings may differ and still perform
+        replacement - otherwise it's left as-is.
         :return: The best matched string
         """
         if isinstance(possibilities[0], str):
@@ -480,16 +488,25 @@ class ConfidentString(Sequence, tuple):
 
         # While it is not strictly necessary to perform all the comparisons necessary to produce the completely
         # sorted list, the practical number of possibilities makes it silly to worry over the log(n) extra comparisons
-        distances = sorted([((1+self.confidence_distance_to(p))/float(w), p) for w, p in possibilities])
-        assert len(distances) == 1 or distances[0][0] < distances[1][0]
-        return self.override_with(distances[0][1])
+        distances = sorted([((1 + self.confidence_distance_to(p)) / float(w), p) for w, p in possibilities])
+        if len(distances) > 1 and distances[0][0] == distances[1][0]:
+            raise AmbiguousSAMEMessage("message: %s possibilities: %s" % (str(self), str(possibilities)))
+        if distances[0][0] <= max_distance:
+            return self.override_with(distances[0][1])
+        else:
+            return self
 
     def index(self, value, start=0, stop=None):
-        '''Return the first index of the given value, which may be specified as a ConfidentCharacter or
-           a character (string of length 1).  If a ConfidentCharacter is provided, then its confidence
-           must also match.
-           Raises ValueError if the value is not present.
-        '''
+        """
+        Return the first index of the given value, which may be specified as a ConfidentCharacter or a character
+        (string of length 1).  If a ConfidentCharacter is provided, then its confidence must also match.
+        Raises ValueError if the value is not present.
+
+        :param value:
+        :param start:
+        :param stop:
+        :return:
+        """
         if isinstance(value, ConfidentCharacter):
             return self.data.index(value, start is not None or 0, stop is not None or len(self))
         if isinstance(value, str) and len(value) == 1:
@@ -497,6 +514,15 @@ class ConfidentString(Sequence, tuple):
                 if self.data[i].char == value:
                     return i
         raise ValueError()
+
+    def find(self, value, start=0, stop=None):
+        """
+        Return the first index of the given value, which may be specified as a String, ConfidentString, or
+           ConfidentCharacter.  Confidences are not matched.
+
+           Returns -1 if the element is not found
+        """
+        return str(self).find(str(value), start, stop)
 
 
 def check_if_valid_code(codes, valid_list):
@@ -562,6 +588,18 @@ class SAMEHeader(ConfidentString, tuple):
         else:
             data = ConfidentString(data, confidence)
 
+        # Make sure it's all ASCII, set nulls to \u0000 (which get 0 confidence)
+        if max([ord(c.char) >> 8 for c in data]):
+            def ascii_mask(char):
+                c = ord(str(char)) & 0xff
+                if c == 0:
+                    c = '\u0000'
+                else:
+                    c = chr(c)
+                return ConfidentCharacter(c, char.bitwise_confidence)
+
+            data = ConfidentString([ascii_mask(c) for c in data])
+
         if received_time is None:
             received_time = time.time()
 
@@ -583,6 +621,11 @@ class SAMEHeader(ConfidentString, tuple):
             return SAMEHeader(ConfidentString.__and__(self, other), received_time=self.time)
         else:
             raise ValueError("Can't and with %s" % other.__class__.__name__)
+
+    def find(self, value, start=0, stop=None):
+        if value == '+' and self.data[len(self) - len(_END_SEQUENCE)].char == '+':
+            return len(self) - len(_END_SEQUENCE)
+        return super(ConfidentString).find(value, start, stop)
 
 
 # For sequences, we define what characters are expected in certain positions in the string.
@@ -608,12 +651,15 @@ class SAMEMessageScrubber(object):
     * ConfidentString
     """
 
-    def __init__(self, headers, counties=None):
+    def __init__(self, headers, transmitter=None):
         """
         :param headers: An iterable of ConfidentStrings based on the headers
         """
         self.headers = headers
-        msg = SAMEHeader(headers[0])
+        if not isinstance(headers[0], SAMEHeader):
+            msg = SAMEHeader(headers[0])
+        else:
+            msg = headers[0]
         if len(headers) > 1:
             for i in range(1, len(headers)):
                 h = headers[i]
@@ -623,53 +669,82 @@ class SAMEMessageScrubber(object):
 
         # self.message will contain our best of 3 string, computed bitwise, and we'll improve on that as we go.
         self.message = msg
-        self.counties = counties
+        self.transmitter = transmitter
+        if transmitter is None:
+            self.counties = None
+            self.wfo = None
+        else:
+            self.counties = sorted(get_counties(transmitter))
+            self.wfo = get_wfo(transmitter)
 
     def fix_length(self):
         # Find the length, set the sentinel characters
         msg = self.message.closest(_SHELL_CANDIDATES)
-        self.message = msg[:msg.index('+') + len(_END_SEQUENCE)]
+        self.message = msg[:msg.find('+') + len(_END_SEQUENCE)]
 
-    def sub_valid_codes(self, offset, choices):
+    def sub_valid_codes(self, offset, choices, max_distance=float("inf")):
         if isinstance(choices[0], str):
             first_choice = choices[0]
         else:
             first_choice = choices[0][1]  # assuming tuple with weight first
         # All the choices have to be the same length or it doesn't make sense.
         msg_word = self.message[offset:offset + len(first_choice)]
-        clean_word = msg_word.closest(choices)
+        clean_word = msg_word.closest(choices, max_distance)
         if msg_word != clean_word:
             self.message = self.message[0:offset] + clean_word + self.message[offset + len(clean_word):]
+
+    def sub_printable(self, start, end):
+        pc = list(_PRINTABLE)
+        for j in range(start, end):
+            self.sub_valid_codes(start + j, pc)
 
     def scrub(self):
         self.fix_length()
         self.sub_valid_codes(1, _ORIGINATOR_CODES)
         self.sub_valid_codes(5, _EVENT_CODES)
         plus_ix = self.message.index('+')
-        self.sub_valid_codes(plus_ix + 1, _DURATION_NUMBERS)
+        self.sub_valid_codes(plus_ix + 1, VALID_DURATIONS)
+
+        if self.wfo is not None:
+            self.sub_valid_codes(plus_ix + 14, [self.wfo])
+        else:
+            self.sub_printable(plus_ix + 14, plus_ix + 19)
 
         # Prefer times near to now
         valid_times = []
         for weight, offset in ((.5, -4), (.7, -3), (.9, -2), (1.1, -1), (1, 0)):
             valid_times.append(
-                (weight, time.strftime('%j%H%M', time.gmtime(self.message.time + 60 * offset))))
+                (weight, time.strftime('%j%H%M', time.gmtime(self.headers[0].time + 60 * offset))))
 
         self.sub_valid_codes(plus_ix + 6, valid_times)
 
+        self.sub_counties(plus_ix)
+        return self.message
+
+    def sub_counties(self, plus_ix):
+        assert plus_ix % 7 == 1
+
         # Substitute for counties with known set or unknown sets
         if self.counties is None:
-            pc = list(_PRINTABLE)
-            for i in range(10, plus_ix, 7):
-                for j in range(0, 7):
-                    self.sub_valid_codes(i + j, pc)
+            for i in range(9, plus_ix, 7):
+                self.sub_printable(i, i + 7)
         else:
-            weighted_counties = [(1-(cx/48.0), self.counties[cx]) for cx in range(0, len(self.counties))]
-            for i in range(10, plus_ix, 7):
-                self.sub_valid_codes(i, weighted_counties)
-                while len(weighted_counties) > 0 and weighted_counties[0][0] != str(self[i:6]):
+            weighted_counties = [(1 - (cx / 48.0), self.counties[cx]) for cx in range(0, len(self.counties))]
+            for i in range(9, plus_ix, 7):
+                self.sub_valid_codes(i, weighted_counties, median(self.message.confidence))
+                while i+7 < plus_ix and len(weighted_counties) > 0 and weighted_counties[0][1] != str(self.message[i:i + 6]):
                     weighted_counties.pop(0)
 
         return self.message
+
+
+class IncompleteSAMEMessage(Exception):
+    pass
+
+
+class AmbiguousSAMEMessage(Exception):
+    def __init__(self, message):
+        self.message = message
 
 
 class SAMEMessage(CommonMessage):
@@ -708,7 +783,10 @@ class SAMEMessage(CommonMessage):
                 self.headers = None
                 self.__avg_message = ConfidentString(headers, [9] * len(headers))
                 self.start_time = time.time()
-                self.start_time = self.get_start_time_sec()
+                try:
+                    self.start_time = self.get_start_time_sec()
+                except IncompleteSAMEMessage:
+                    pass
                 self.timeout = float("-inf")
                 event_id = str(self.__avg_message)
             else:
@@ -732,6 +810,7 @@ class SAMEMessage(CommonMessage):
             raise ValueError("Message is already complete.")
         if not isinstance(header, SAMEHeader):
             raise ValueError("Only SAMEHeaders belong")
+        self.headers.append(header)
         self.timeout = header.time + 6
 
     def get_areas(self):
@@ -757,36 +836,45 @@ class SAMEMessage(CommonMessage):
     def get_SAME_message(self):
         if self.fully_received():
             if self.__avg_message is None:
-                self.__avg_message = average_message(self.headers, self.transmitter)
-                mtype = self.get_event_type()
+                self.__avg_message = SAMEMessageScrubber(self.headers, self.transmitter).scrub()
+                mtype = str(self.__avg_message[5:8])
                 level = default_prioritization(mtype)
                 logging.getLogger("RPiNWR.same.message.%s.%s" % (self.get_originator(), mtype)).log(level, "%s", self)
             return self.__avg_message
         else:
             if len(self.headers) > 0:
-                return average_message(self.headers)
+                return SAMEMessageScrubber(self.headers, self.transmitter).scrub()
             else:
                 return "", []
 
+    def __getitem__(self, item):
+        return self.get_SAME_message().__getitem__(item)
+
+    def __len__(self):
+        return self.get_SAME_message().__len__()
+
     def get_originator(self):
-        return self.get_SAME_message()[0][1:4]
+        return self[1:4]
 
     def get_event_type(self):
-        return self.get_SAME_message()[0][5:8]
+        return self[5:8]
 
     def get_counties(self):
-        m = self.get_SAME_message()[0]
-        return m[9:m.find('+')].split("-")
+        return str(self[9:self.__find_plus()]).split("-")
+
+    def __find_plus(self):
+        ix = self.get_SAME_message().find('+')
+        if ix < 0:
+            raise IncompleteSAMEMessage()
+        return ix
 
     def get_duration_str(self):
-        m = self.get_SAME_message()[0]
-        start = m.find('+') + 1
-        return m[start:start + 4]
+        start = self.__find_plus() + 1
+        return str(self[start:start + 4])
 
     def get_start_time_str(self):
-        m = self.get_SAME_message()[0]
-        start = m.find('+') + 6
-        return m[start:start + 7]
+        start = self.__find_plus() + 6
+        return str(self[start:start + 7])
 
     def get_duration_sec(self):
         d_str = self.get_duration_str()
@@ -817,28 +905,18 @@ class SAMEMessage(CommonMessage):
             raise ValueError()
 
         # TODO identify an uncertain match (i.e. there was ambiguity in the counties received)
-        msg, confidence = self.get_SAME_message()
-        for i in range(15, len(msg) - 20, 7):
-            match = True
-            for x in range(-1, -6, -1):
-                match &= msg[i + x] == fips[x]
-                if not match:
-                    break
-            match &= fips[0] == '0' or msg[i - 6] == '0' or fips[0] == msg[i - 6]
-            if match:
-                return True
-
-        return False
+        counties = [c[1:] for c in self.get_counties()]
+        # TODO account for the partial counties
+        return fips in counties
 
     def get_broadcaster(self):
-        m = self.get_SAME_message()[0]
-        start = m.find('+') + 14
-        return m[start:-1]
+        start = self.__find_plus() + 14
+        return self[start:-1]
 
     def __str__(self):
         msg = self.get_SAME_message()
         return 'SAMEMessage: { "message":"%s", "confidence":"%s" }' % (
-            unicodify(msg[0]), "".join([str(x) for x in msg[1]]))
+            unicodify(str(msg)), "".join([str(x) for x in msg.confidence]))
 
     def __repr__(self):
         return "SameMessage(%r,%r,%r)" % (self.transmitter, self.headers, self.received_callback)

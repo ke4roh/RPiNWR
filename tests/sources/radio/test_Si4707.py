@@ -259,12 +259,12 @@ class TestSi4707(unittest.TestCase):
                 self.__wait_for_eom_events(events)
 
         same_messages = list(filter(lambda x: type(x) is SAMEMessageReceivedEvent, events))
-        self.assertEquals(1, len(same_messages))
-        self.assertTrue(same_messages[0].message.headers[0][0].startswith(message),
-                        "%s != %s " % (message, same_messages[0].message.headers[0][0]))
+        self.assertEqual(1, len(same_messages))
+        self.assertTrue(str(same_messages[0].message.headers[0]).startswith(message),
+                        "%s != %s " % (message, same_messages[0].message.headers[0]))
         for interrupt in ["HDRRDY", "PREDET"]:
             times = len(self.__filter_same_events(events, interrupt))
-            self.assertEquals(3, times, "Interrupt %s happened %d times" % (interrupt, times))
+            self.assertEqual(3, times, "Interrupt %s happened %d times" % (interrupt, times))
 
 
 if __name__ == '__main__':

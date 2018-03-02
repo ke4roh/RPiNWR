@@ -177,7 +177,7 @@ class TestCache(unittest.TestCase):
                            by_score_and_time, clock=alerter._time)
         self.manager = cachemon = CacheMonitor(buf)
         (cachemon + buf + alerter + Debugger()).run()
-        self.assertEquals(len(expected), len(cachemon.stats), cachemon.stats)
+        self.assertEqual(len(expected), len(cachemon.stats), cachemon.stats)
         for i in range(0, len(expected)):
             self.assertEquals(expected[i].strip(), cachemon.stats[i].strip())
 
