@@ -171,12 +171,12 @@ class TestConfidentString(unittest.TestCase):
 
 class TestSAMEMessageScrubber(unittest.TestCase):
     def test_constructor(self):
-        headers = [ConfidentString('-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀ6ḀỿỨỼỿ',
-                                   '33333333333333333333333333333323333333333000000'),
-                   ConfidentString('-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀjḀẻẜẓỿ',
-                                   '33333333333333333333333333333333333333333000000'),
-                   ConfidentString('-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀḖḀỻờ~ỿ',
-                                   '33333323333333333333333333333333333333333000000')]
+        headers = [SAMEHeader('-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀ6ḀỿỨỼỿ',
+                                   '33333333333333333333333333333323333333333000000', 1493842380),
+                   SAMEHeader('-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀjḀẻẜẓỿ',
+                                   '33333333333333333333333333333333333333333000000', 1493842380),
+                   SAMEHeader('-WḀR-SVR-0Ḁ7183+00Ḁ5-12320Ḁ3-KRAH/ḀWS-ḀḀḀḖḀỻờ~ỿ',
+                                   '33333323333333333333333333333333333333333000000', 1493842380)]
 
         ms = SAMEMessageScrubber(headers)
         expected = ConfidentString('-W R-SVR-0 7183+00 5-12320 3-KRAH/ WS-         '.replace(' ', '\u0000'),
@@ -286,7 +286,7 @@ class TestSAME(unittest.TestCase):
         if msg_time is None:
             msg_time = TestSAME.get_time(msg_tuple[0])
         message_duration = 1 + len(msg_tuple[0]) / 520.83 * 8
-        return msg_tuple[0], msg_tuple[1], msg_time + message_duration * order
+        return SAMEHeader(msg_tuple[0], msg_tuple[1], msg_time + message_duration * order)
 
     @staticmethod
     def add_noise(msg, rate, sd=.02):
@@ -342,7 +342,6 @@ class TestSAME(unittest.TestCase):
             TestSAME.add_noise(clear_message, noise),
             TestSAME.add_noise(clear_message, noise)
         ], msg_time)
-
 
     def test_dirty_messages(self):
         logging.basicConfig(level=logging.INFO)
@@ -567,34 +566,30 @@ class TestSAME(unittest.TestCase):
 
     def test_parse_letters_in_fips(self):
         msg = "-PEP-TXP-WXL58!+0015-1180023-KRAH/NWS-"
-        mm = average_message(TestSAME.add_time(
+        mm = SAMEMessage("WXL58", TestSAME.add_time(
             [(msg, '2' * len(msg))] * 3
-        ), "WXL58")
+        ))
 
-        self.assertEqual(msg, mm[0])
+        self.assertEqual(msg, str(mm.get_SAME_message()))
 
     def test_fips_p_code(self):
         # WXL29 serves 2 large counties
         # ('032013', '032027')
         msg = "-WXR-TOR-932013-832013+0015-1180023-KLKN/NWS-"
-        mm = average_message(TestSAME.add_time(
-            [(msg, '2' * len(msg))] * 3
-        ), "WXL29")
+        sm = SAMEMessage("WXL29", msg)
 
-        self.assertEqual(msg, mm[0])
+        self.assertEqual(msg, str(sm.get_SAME_message()))
 
     def test_p_code_with_nulls(self):
         # These counties differ in 2 digits, so several mutations should resolve correctly
         clean_msg = "-WXR-TOR-932013-832013+0015-1180023-KLKN/NWS-"
         msg = list(clean_msg)
-        msg[12] = '\x00'
-        msg[19] = '\x00'
+        msg[12] = '\u0000'
+        msg[19] = '\u0000'
         msg = "".join(msg)
-        mm = average_message(TestSAME.add_time(
-            [(msg, '2' * len(msg))] * 3
-        ), "WXL29")
+        mm = SAMEMessage("WXL29", [SAMEHeader(msg, [3] * len(msg), 1493339040)])
 
-        self.assertEqual(clean_msg, mm[0])
+        self.assertEqual(clean_msg, str(mm.get_SAME_message()))
 
     def test_applies_to_fips(self):
         msg = '-WXR-RWT-037001-037037-037063-037069-037077-037085-037101-037105-037125-037135-037145-037151-037181-037183-037185+0600-1181503-KRAH/NWS-'
@@ -620,13 +615,13 @@ class TestSAME(unittest.TestCase):
         # came in at a specific time (shortly after it says it was created).  The transmitter is not necessary
         # because we know the whole code is valid.
         msg = "-WXR-SVR-037085-037101+0100-1250218-KRAH/NWS-"
-        m = SAMEMessage(transmitter=None, headers=[(msg, '9' * len(msg), 1462328285)])
+        m = SAMEMessage(transmitter=None, headers=[SAMEHeader(msg, [9] * len(msg), 1462328285)])
         self.assertEqual(1462328280.0, m.get_start_time_sec())
         self.assertEqual(60 * 60, m.get_duration_sec())
         self.assertEqual(1462328280 + 60 * 60, m.get_end_time_sec())
 
     def test_get_broadcaster(self):
-        self.assertEqual("KRAH/NWS", SAMEMessage("-WXR-SVR-037085-037101+0100-1250218-KRAH/NWS-").get_broadcaster())
+        self.assertEqual("KRAH/NWS", str(SAMEMessage("-WXR-SVR-037085-037101+0100-1250218-KRAH/NWS-").get_broadcaster()))
 
     def test_sort_messages(self):
         self.assertEqual(0, default_SAME_sort(SAMEMessage("-WXR-SVR-037085-037101+0100-1250218-KRAH/NWS-"),

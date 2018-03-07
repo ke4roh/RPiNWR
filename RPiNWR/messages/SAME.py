@@ -461,7 +461,7 @@ class ConfidentString(Sequence, tuple):
         for i in range(0, len(d)):
             if valid_str[i] != '\u0000':
                 d[i] = d[i].override_with(valid_str[i])
-                if len(self) > i: # and self[i].char != '\u0000':
+                if len(self) > i:
                     confidence_sum += d[i].confidence
                     confidence_count += 1
 
@@ -696,7 +696,7 @@ class SAMEMessageScrubber(object):
     def sub_printable(self, start, end):
         pc = list(_PRINTABLE)
         for j in range(start, end):
-            self.sub_valid_codes(start + j, pc)
+            self.sub_valid_codes(j, pc)
 
     def scrub(self):
         self.fix_length()
@@ -727,12 +727,15 @@ class SAMEMessageScrubber(object):
         # Substitute for counties with known set or unknown sets
         if self.counties is None:
             for i in range(9, plus_ix, 7):
-                self.sub_printable(i, i + 7)
+                self.sub_printable(i, i + 6)
         else:
-            weighted_counties = [(1 - (cx / 48.0), self.counties[cx]) for cx in range(0, len(self.counties))]
+            weighted_counties = [(1 - (cx / 48.0), self.counties[cx][1:]) for cx in range(0, len(self.counties))]
             for i in range(9, plus_ix, 7):
-                self.sub_valid_codes(i, weighted_counties, median(self.message.confidence))
-                while i+7 < plus_ix and len(weighted_counties) > 0 and weighted_counties[0][1] != str(self.message[i:i + 6]):
+                if len(weighted_counties) < 1:
+                    break
+                self.sub_valid_codes(i+1, weighted_counties, median(self.message.confidence))
+                self.sub_valid_codes(i, [((n == '0' and 1) or .5,n) for n in '0123456789'], median(self.message.confidence))
+                while self.message[i].char == '0' and i+7 < plus_ix and len(weighted_counties) > 0 and weighted_counties[0][1] != str(self.message[i+1:i + 6]):
                     weighted_counties.pop(0)
 
         return self.message
@@ -854,10 +857,10 @@ class SAMEMessage(CommonMessage):
         return self.get_SAME_message().__len__()
 
     def get_originator(self):
-        return self[1:4]
+        return str(self[1:4])
 
     def get_event_type(self):
-        return self[5:8]
+        return str(self[5:8])
 
     def get_counties(self):
         return str(self[9:self.__find_plus()]).split("-")
@@ -905,13 +908,16 @@ class SAMEMessage(CommonMessage):
             raise ValueError()
 
         # TODO identify an uncertain match (i.e. there was ambiguity in the counties received)
-        counties = [c[1:] for c in self.get_counties()]
-        # TODO account for the partial counties
-        return fips in counties
+        counties = {c[1:]: c[0] for c in self.get_counties() }
+
+        if fips[1:] in counties:
+            msg_fips_zone = counties[fips[1:]]
+            return msg_fips_zone == '0' or fips[0] == '0' or fips[0] == msg_fips_zone
+        return False
 
     def get_broadcaster(self):
         start = self.__find_plus() + 14
-        return self[start:-1]
+        return str(self[start:-1])
 
     def __str__(self):
         msg = self.get_SAME_message()
@@ -951,8 +957,8 @@ def default_prioritization(event_type):
 
 
 def default_SAME_sort(a, b):
-    apri = default_prioritization(a.get_event_type())
-    bpri = default_prioritization(b.get_event_type())
+    apri = default_prioritization(str(a.get_event_type()))
+    bpri = default_prioritization(str(b.get_event_type()))
     delta = bpri - apri  # highest first
     if delta:
         return delta

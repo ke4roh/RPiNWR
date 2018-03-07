@@ -203,7 +203,7 @@ class TestSi4707(unittest.TestCase):
                 self.__wait_for_eom_events(events)
                 same_messages = list(filter(lambda x: type(x) is SAMEMessageReceivedEvent, events))
                 self.assertEquals(1, len(same_messages))
-                self.assertEquals(message, same_messages[0].message.get_SAME_message()[0])
+                self.assertEquals(message, str(same_messages[0].message.get_SAME_message()))
                 for interrupt in ["EOMDET", "HDRRDY", "PREDET"]:
                     times = len(self.__filter_same_events(events, interrupt))
                     self.assertEquals(3, times, "Interrupt %s happened %d times" % (interrupt, times))
@@ -241,7 +241,7 @@ class TestSi4707(unittest.TestCase):
 
         same_messages = list(filter(lambda x: type(x) is SAMEMessageReceivedEvent, events))
         self.assertEquals(1, len(same_messages))
-        self.assertEquals(message, same_messages[0].message.get_SAME_message()[0])
+        self.assertEquals(message, str(same_messages[0].message.get_SAME_message()))
         for interrupt in ["HDRRDY", "PREDET"]:
             times = len(self.__filter_same_events(events, interrupt))
             self.assertEquals(2, times, "Interrupt %s happened %d times" % (interrupt, times))
