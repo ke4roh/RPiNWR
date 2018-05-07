@@ -55,6 +55,6 @@ class TestRadioComponent(unittest.TestCase):
             r.context.run_script('send %s' % message)
             # It takes some time for the message to get "sent"
             events = watcher.wait_for_n_events(1, filter_function=lambda x: x[0].name == "new_message", timeout=20)
-            self.assertEqual(message, events[0][0].args[0].get_SAME_message()[0])
+            self.assertEqual(message, str(events[0][0].args[0].get_SAME_message()))
         finally:
             r.stop()

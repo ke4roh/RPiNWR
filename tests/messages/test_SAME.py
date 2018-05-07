@@ -21,12 +21,10 @@ from math import ceil
 import random
 import unittest
 from RPiNWR.messages.SAME import *
-import RPiNWR.messages.SAME as SAME
 import logging
 import json
 from calendar import timegm
 import os
-import string
 
 
 class TestConfidentCharacter(unittest.TestCase):
@@ -112,6 +110,9 @@ class TestConfidentString(unittest.TestCase):
 
         cs = ConfidentString("Foo", [3] * 3)
         self.assertEqual(0, cs.confidence_distance_to('Foo\u0000'))
+
+        cs = ConfidentString("Foo", [3] * 3)
+        self.assertEqual(144, cs.confidence_distance_to('Foo+12345'))
 
     def testReturnNearest(self):
         cs = ConfidentString("W\u0000R", [3, 0, 3])
@@ -433,6 +434,19 @@ class TestSAME(unittest.TestCase):
         with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "dirty_messages_1.json"), "w",
                   encoding="utf-8") as f:
             json.dump(messages, f, indent=4, sort_keys=True, ensure_ascii=False)
+
+    def test_incomplete_message(self):
+        msg = '-WWF-RWT-020103-020209-020091-020121-029047-029165'
+        message = SAMEMessage(headers=[SAMEHeader(msg, [2] * len(msg))])
+        with self.assertRaises(AmbiguousSAMEMessage):
+            self.assertEqual("RWT", message.get_event_type())
+        # This example may be a bit contrived.  Will a message get cut off like this (often enough to care?)
+        # If a message is truncated (at either end), is there some expectation that we'll be able to do
+        # something useful with it anyway?  Need a clearer use case (or example message(s)).
+
+        self.assertEqual("SameMessage(None,[<SAMEHeader('-WWF-RWT-020103-020209-020091-020121-029047-029165',"
+                         "(2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,"
+                         " 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2))>],None)", repr(message))
 
     def load_dirty_messages(self):
         with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "dirty_messages.json"), "r",

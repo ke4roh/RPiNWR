@@ -87,9 +87,12 @@ class Si4707(object):
         :param finished: True if the message is asserted to be complete, False if it's checking against the timeout
         :return: None
         """
-        if self.same_message and self.same_message.fully_received(make_it_so=finished):
-            # checking message.fully_received() will dispatch it if it's finished
-            pass
+        try:
+            if self.same_message and self.same_message.fully_received(make_it_so=finished):
+                # checking message.fully_received() will dispatch it if it's finished
+                pass
+        except:
+            self._logger.error(repr(self.same_message))#, exc_info=e)
 
     def __command_loop(self):
         while not self.stop:
@@ -311,7 +314,11 @@ class Si4707(object):
             self.__command_serial_number += 1
 
         command.future = Future()
-        self.__command_queue.put_nowait((serial << command.get_priority(), command))
+        try:
+            self.__command_queue.put_nowait((serial << command.get_priority(), command))
+        except queue.Full:
+            raise queue.Full(str(command) + " not executed")
+
         return command.future
 
     def queue_callback(self, func, args=None, kw_args=None):

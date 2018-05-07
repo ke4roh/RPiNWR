@@ -52,4 +52,3 @@ class StatusError(Si4707Exception):
 
     def __init__(self, status):
         self.status = status
-

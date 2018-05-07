@@ -763,7 +763,7 @@ class SAMEMessage(CommonMessage):
        - Implementation of the structure found in http://www.nws.noaa.gov/directives/sym/pd01017012curr.pdf
     """
 
-    def __init__(self, transmitter, headers=None, received_callback=None):
+    def __init__(self, transmitter=None, headers=None, received_callback=None):
         """
         :param transmitter: Call letters for the transmitter, so that FIPS codes can be checked.
         :param headers:  Headers for a legacy message to reconstitute, None if this is a new message,
